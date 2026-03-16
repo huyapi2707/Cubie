@@ -1,0 +1,192 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ─── Light Theme ─────────────────────────────────────────────── */
+@layer base {
+  :root {
+    --background: 210 20% 98%;
+    --foreground: 217 33% 7%;
+    --card: 0 0% 100%;
+    --card-foreground: 217 33% 7%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 217 33% 7%;
+    --primary: 217 91% 50%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 214 20% 94%;
+    --secondary-foreground: 217 25% 15%;
+    --muted: 214 20% 94%;
+    --muted-foreground: 215 16% 47%;
+    --accent: 214 20% 94%;
+    --accent-foreground: 217 25% 15%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 214 20% 88%;
+    --input: 214 20% 88%;
+    --ring: 217 91% 50%;
+    --radius: 0.625rem;
+
+    --sidebar: 214 20% 96%;
+    --sidebar-foreground: 217 25% 15%;
+    --sidebar-accent: 217 90% 95%;
+    --sidebar-accent-foreground: 217 91% 40%;
+    --sidebar-border: 214 20% 88%;
+  }
+
+  /* ─── Dark Theme ──────────────────────────────────────────────── */
+  .dark {
+    --background: 222 47% 6%;
+    --foreground: 210 40% 96%;
+    --card: 222 47% 8%;
+    --card-foreground: 210 40% 96%;
+    --popover: 222 47% 8%;
+    --popover-foreground: 210 40% 96%;
+    --primary: 217 91% 60%;
+    --primary-foreground: 222 47% 6%;
+    --secondary: 217 20% 16%;
+    --secondary-foreground: 210 40% 96%;
+    --muted: 217 20% 16%;
+    --muted-foreground: 215 20% 60%;
+    --accent: 217 20% 16%;
+    --accent-foreground: 210 40% 96%;
+    --destructive: 0 63% 51%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 217 20% 16%;
+    --input: 217 20% 16%;
+    --ring: 217 91% 60%;
+
+    --sidebar: 222 47% 7%;
+    --sidebar-foreground: 210 30% 88%;
+    --sidebar-accent: 217 50% 14%;
+    --sidebar-accent-foreground: 217 91% 72%;
+    --sidebar-border: 217 20% 12%;
+  }
+}
+
+/* ─── Base Styles ───────────────────────────────────────────────── */
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: 'rlig' 1, 'calt' 1;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Custom scrollbar */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: hsl(var(--muted-foreground) / 0.3);
+    border-radius: 3px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--muted-foreground) / 0.5);
+  }
+}
+
+/* ─── Utility Classes ───────────────────────────────────────────── */
+@layer utilities {
+  .drag-region {
+    -webkit-app-region: drag;
+  }
+
+  .no-drag {
+    -webkit-app-region: no-drag;
+  }
+
+  .glass {
+    @apply bg-card/80 backdrop-blur-xl border border-border/50;
+  }
+
+  .gradient-primary {
+    background: linear-gradient(135deg, hsl(217 91% 50%), hsl(199 89% 48%));
+  }
+
+  .gradient-text {
+    @apply bg-clip-text text-transparent;
+    background: linear-gradient(135deg, hsl(217 91% 60%), hsl(199 89% 55%));
+  }
+
+  .animate-enter {
+    animation: fade-in 0.4s ease-out both;
+  }
+
+  .animate-surf {
+    animation: surf 3s ease-in-out infinite;
+  }
+}
+
+/* ─── Wave Propagation Rings ─────────────────────────────────────── */
+.wave-ring {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 5.25rem;
+  height: 5.25rem;
+  margin-top: -2.625rem;
+  margin-left: -2.625rem;
+  border-radius: 9999px;
+  border: 2px solid hsl(var(--primary) / 0.45);
+  animation: wave-propagate 3s ease-out infinite;
+  pointer-events: none;
+}
+
+.wave-ring-2 {
+  animation-delay: 0.6s;
+}
+
+.wave-ring-3 {
+  animation-delay: 1.2s;
+}
+
+.wave-ring-4 {
+  animation-delay: 1.8s;
+}
+
+.wave-ring-5 {
+  animation-delay: 2.4s;
+}
+
+/* Orange variant for "connecting" state */
+.wave-ring-orange {
+  border-color: hsl(30 95% 55% / 0.45);
+}
+
+/* ─── Keyframes ──────────────────────────────────────────────────── */
+@keyframes surf {
+  0%, 100% {
+    transform: translateY(0) rotate(0deg);
+  }
+  25% {
+    transform: translateY(-10px) rotate(2deg);
+  }
+  50% {
+    transform: translateY(0) rotate(0deg);
+  }
+  75% {
+    transform: translateY(-6px) rotate(-2deg);
+  }
+}
+
+@keyframes wave-propagate {
+  0% {
+    transform: scale(1);
+    opacity: 0.6;
+  }
+  100% {
+    transform: scale(3.2);
+    opacity: 0;
+  }
+}
