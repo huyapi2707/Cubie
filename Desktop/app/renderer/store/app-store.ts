@@ -7,6 +7,8 @@ interface AppState {
   // Theme
   theme: ThemeMode;
   setTheme: (theme: ThemeMode) => void;
+  /** Update local theme state without persisting — used when main process pushes a change */
+  _setThemeFromMain: (theme: ThemeMode) => void;
 
   // Sidebar
   sidebarCollapsed: boolean;
@@ -31,6 +33,10 @@ interface AppState {
   selectedOutputMicLabel: string;
   setOutputMic: (id: string, label: string) => void;
 
+  selectedSpeakerId: string;
+  selectedSpeakerLabel: string;
+  setSpeaker: (id: string, label: string) => void;
+
   // Running state
   running: boolean;
   setRunning: (running: boolean) => void;
@@ -40,6 +46,10 @@ interface AppState {
   sourceLanguage: string;
   targetLanguage: string;
   setLanguages: (source: string, target: string) => void;
+
+  // Auto Reconnect
+  autoReconnect: boolean;
+  setAutoReconnect: (enabled: boolean) => void;
 
   // Settings hydration
   _hydrated: boolean;
@@ -62,6 +72,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   setTheme: (theme) => {
     set({ theme });
     persistSettings({ theme });
+  },
+  _setThemeFromMain: (theme) => {
+    set({ theme });
   },
 
   // Sidebar
@@ -93,6 +106,13 @@ export const useAppStore = create<AppState>((set, get) => ({
     persistSettings({ selectedOutputMicId: id, selectedOutputMicLabel: label });
   },
 
+  selectedSpeakerId: '',
+  selectedSpeakerLabel: '',
+  setSpeaker: (id, label) => {
+    set({ selectedSpeakerId: id, selectedSpeakerLabel: label });
+    persistSettings({ selectedSpeakerId: id, selectedSpeakerLabel: label });
+  },
+
   // Running state (in-memory only — not persisted)
   running: false,
   setRunning: (running) => {
@@ -111,6 +131,13 @@ export const useAppStore = create<AppState>((set, get) => ({
   setLanguages: (source, target) => {
     set({ sourceLanguage: source, targetLanguage: target });
     persistSettings({ sourceLanguage: source, targetLanguage: target });
+  },
+
+  // Auto Reconnect
+  autoReconnect: true,
+  setAutoReconnect: (enabled) => {
+    set({ autoReconnect: enabled });
+    persistSettings({ autoReconnect: enabled });
   },
 
   // Settings hydration — called once on app startup
@@ -133,9 +160,12 @@ export const useAppStore = create<AppState>((set, get) => ({
         patch.selectedMicLabel = settings.selectedMicLabel || '';
         patch.selectedOutputMicId = settings.selectedOutputMicId || '';
         patch.selectedOutputMicLabel = settings.selectedOutputMicLabel || '';
+        patch.selectedSpeakerId = settings.selectedSpeakerId || '';
+        patch.selectedSpeakerLabel = settings.selectedSpeakerLabel || '';
         // Use saved languages, or fallback to voice config defaults
         patch.sourceLanguage = settings.sourceLanguage || voiceConfig?.defaultSourceLanguage || '';
         patch.targetLanguage = settings.targetLanguage || voiceConfig?.defaultTargetLanguage || '';
+        patch.autoReconnect = settings.autoReconnect ?? true;
       }
 
       set(patch as Partial<AppState>);

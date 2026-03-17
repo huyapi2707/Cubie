@@ -85,8 +85,11 @@ export interface UserSettings {
   selectedMicLabel: string;
   selectedOutputMicId: string;
   selectedOutputMicLabel: string;
+  selectedSpeakerId: string;
+  selectedSpeakerLabel: string;
   sourceLanguage: string;
   targetLanguage: string;
+  autoReconnect: boolean;
 }
 
 // ─── IPC Request/Response Maps ─────────────────────────────────────

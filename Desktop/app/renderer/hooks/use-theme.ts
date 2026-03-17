@@ -28,12 +28,13 @@ export function useTheme() {
   useEffect(() => {
     if (!window.electronAPI?.theme) return;
 
+    const setThemeFromMain = useAppStore.getState()._setThemeFromMain;
     const unsubscribe = window.electronAPI.theme.onChange((mode: ThemeMode) => {
-      setTheme(mode);
+      setThemeFromMain(mode);
     });
 
     return unsubscribe;
-  }, [setTheme]);
+  }, []);
 
   const toggleTheme = useCallback(() => {
     const next = theme === 'dark' ? 'light' : 'dark';

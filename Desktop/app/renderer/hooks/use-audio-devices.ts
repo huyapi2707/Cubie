@@ -6,11 +6,12 @@ export interface AudioDevice {
 }
 
 /**
- * Hook to enumerate audio input (microphone) devices.
+ * Hook to enumerate audio input (microphone) and output (speaker) devices.
  * Requests microphone permission if needed to get device labels.
  */
 export function useAudioDevices() {
   const [inputDevices, setInputDevices] = useState<AudioDevice[]>([]);
+  const [outputDevices, setOutputDevices] = useState<AudioDevice[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -33,10 +34,19 @@ export function useAudioDevices() {
           label: d.label || `Microphone (${d.deviceId.slice(0, 8)}...)`,
         }));
 
+      const outputs = allDevices
+        .filter((d) => d.kind === 'audiooutput')
+        .map((d) => ({
+          deviceId: d.deviceId,
+          label: d.label || `Speaker (${d.deviceId.slice(0, 8)}...)`,
+        }));
+
       setInputDevices(inputs);
+      setOutputDevices(outputs);
     } catch (err) {
       setError((err as Error).message);
       setInputDevices([]);
+      setOutputDevices([]);
     } finally {
       setLoading(false);
     }
@@ -50,5 +60,5 @@ export function useAudioDevices() {
     return () => navigator.mediaDevices.removeEventListener('devicechange', enumerate);
   }, [enumerate]);
 
-  return { inputDevices, loading, error, refresh: enumerate };
+  return { inputDevices, outputDevices, loading, error, refresh: enumerate };
 }

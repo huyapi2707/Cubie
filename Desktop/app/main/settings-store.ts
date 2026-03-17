@@ -9,6 +9,11 @@ const DEFAULTS: UserSettings = {
   selectedMicLabel: '',
   selectedOutputMicId: '',
   selectedOutputMicLabel: '',
+  selectedSpeakerId: '',
+  selectedSpeakerLabel: '',
+  sourceLanguage: 'en',
+  targetLanguage: 'vi',
+  autoReconnect: true,
 };
 
 const schema = {
@@ -17,6 +22,11 @@ const schema = {
   selectedMicLabel: { type: 'string' as const, default: '' },
   selectedOutputMicId: { type: 'string' as const, default: '' },
   selectedOutputMicLabel: { type: 'string' as const, default: '' },
+  selectedSpeakerId: { type: 'string' as const, default: '' },
+  selectedSpeakerLabel: { type: 'string' as const, default: '' },
+  sourceLanguage: { type: 'string' as const, default: 'en' },
+  targetLanguage: { type: 'string' as const, default: 'vi' },
+  autoReconnect: { type: 'boolean' as const, default: true },
 };
 
 // ─── Singleton Instance ────────────────────────────────────────────
@@ -36,6 +46,11 @@ export function getSettings(): UserSettings {
     selectedMicLabel: store.get('selectedMicLabel'),
     selectedOutputMicId: store.get('selectedOutputMicId'),
     selectedOutputMicLabel: store.get('selectedOutputMicLabel'),
+    selectedSpeakerId: store.get('selectedSpeakerId'),
+    selectedSpeakerLabel: store.get('selectedSpeakerLabel'),
+    sourceLanguage: store.get('sourceLanguage'),
+    targetLanguage: store.get('targetLanguage'),
+    autoReconnect: store.get('autoReconnect'),
   };
 }
 

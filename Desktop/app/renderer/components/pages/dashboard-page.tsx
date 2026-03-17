@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
-import { Zap, Loader2, Radio, Clock, Globe, Wifi, WifiOff, AlertTriangle } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Zap, Loader2, Radio, Clock, Globe, Wifi, WifiOff, AlertTriangle, Volume2, MessageSquare, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { InfoCard } from '@/components/ui/info-card';
 import { useAppStore } from '@/store';
 import { voiceService } from '@/services';
 import { cn } from '@/lib/utils';
@@ -14,6 +15,26 @@ export function DashboardPage() {
   const [elapsed, setElapsed] = useState(0);
   const [startTime, setStartTime] = useState<number | null>(null);
   const [errors, setErrors] = useState<string[]>([]);
+  const selectedOutputMicId = useAppStore((s) => s.selectedOutputMicId);
+  const selectedSpeakerId = useAppStore((s) => s.selectedSpeakerId);
+  const [monitoring, setMonitoring] = useState(false);
+  const [showTranscript, setShowTranscript] = useState(true);
+  const monitorCtxRef = useRef<AudioContext | null>(null);
+  const monitorStreamRef = useRef<MediaStream | null>(null);
+
+  // Transcript & translation
+  interface TranscriptEntry {
+    id: number;
+    transcript: string;
+    translation: string;
+  }
+  const [entries, setEntries] = useState<TranscriptEntry[]>([]);
+  const [liveTranscript, setLiveTranscript] = useState('');
+  const [liveTranslation, setLiveTranslation] = useState('');
+  const entryIdRef = useRef(0);
+  const transcriptEndRef = useRef<HTMLDivElement | null>(null);
+  const showTranscriptRef = useRef(showTranscript);
+  showTranscriptRef.current = showTranscript;
 
   // Connect/disconnect the voice server when the button is clicked
   const handleToggle = async () => {
@@ -43,12 +64,14 @@ export function DashboardPage() {
         setRunning(false);
         setStartTime(null);
         setElapsed(0);
-        setErrors(voiceService.getValidationErrors());
+        setErrors(voiceService.getErrors());
       } else if (status === 'disconnected') {
         setConnecting(false);
         setRunning(false);
         setStartTime(null);
         setElapsed(0);
+        setLiveTranscript('');
+        setLiveTranslation('');
       }
     });
     return unsubscribe;
@@ -63,6 +86,112 @@ export function DashboardPage() {
     return () => clearInterval(timer);
   }, [startTime]);
 
+  // Subscribe to voice service messages for transcript/translation
+  useEffect(() => {
+    const unsubscribe = voiceService.onMessage((message) => {
+      if (!showTranscriptRef.current) return;
+      if (message.type === 'transcript') {
+        const text = message.text as string;
+        const isFinal = message.isFinal as boolean;
+
+        if (isFinal && text.trim()) {
+          const id = ++entryIdRef.current;
+          setEntries((prev) => [...prev, { id, transcript: text, translation: '' }]);
+          setLiveTranscript('');
+        } else {
+          setLiveTranscript(text);
+        }
+      } else if (message.type === 'translation') {
+        const text = message.text as string;
+        if (text.trim()) {
+          setEntries((prev) => {
+            if (prev.length === 0) return prev;
+            const updated = [...prev];
+            updated[updated.length - 1] = {
+              ...updated[updated.length - 1],
+              translation: text,
+            };
+            return updated;
+          });
+          setLiveTranslation('');
+        } else {
+          setLiveTranslation(text);
+        }
+      }
+    });
+    return unsubscribe;
+  }, []);
+
+  // Auto-scroll transcript panel
+  useEffect(() => {
+    transcriptEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [entries, liveTranscript]);
+
+  // Stop monitoring when connection drops
+  useEffect(() => {
+    if (!running && monitoring) {
+      stopMonitoring();
+    }
+  }, [running]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => stopMonitoring();
+  }, []);
+
+  const stopMonitoring = useCallback(() => {
+    if (monitorStreamRef.current) {
+      monitorStreamRef.current.getTracks().forEach((t) => t.stop());
+      monitorStreamRef.current = null;
+    }
+    if (monitorCtxRef.current) {
+      monitorCtxRef.current.close().catch(() => {});
+      monitorCtxRef.current = null;
+    }
+    setMonitoring(false);
+  }, []);
+
+  const startMonitoring = useCallback(async () => {
+    if (!selectedOutputMicId || monitoring) return;
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: { deviceId: { exact: selectedOutputMicId } },
+      });
+      monitorStreamRef.current = stream;
+
+      const ctx = new AudioContext();
+      await ctx.resume();
+
+      try {
+        if (typeof (ctx as any).setSinkId === 'function') {
+          const sinkId = selectedSpeakerId === 'default' ? '' : selectedSpeakerId;
+          await (ctx as any).setSinkId(sinkId);
+        }
+      } catch {
+        // Fall back to default output
+      }
+
+      monitorCtxRef.current = ctx;
+
+      const source = ctx.createMediaStreamSource(stream);
+      source.connect(ctx.destination);
+
+      setMonitoring(true);
+    } catch (err) {
+      console.error('[Dashboard] Failed to start monitoring:', err);
+      stopMonitoring();
+    }
+  }, [selectedOutputMicId, selectedSpeakerId, monitoring, stopMonitoring]);
+
+  const toggleMonitoring = useCallback(() => {
+    if (monitoring) {
+      stopMonitoring();
+    } else {
+      startMonitoring();
+    }
+  }, [monitoring, stopMonitoring, startMonitoring]);
+
   const formatTime = (s: number) => {
     const m = Math.floor(s / 60);
     const sec = s % 60;
@@ -73,106 +202,108 @@ export function DashboardPage() {
   const statusText = connecting ? 'Establishing connection…' : running ? 'Live — Translating in real time' : 'Ready to connect';
 
   return (
-    <div className="flex flex-col items-center justify-center h-full animate-enter gap-8">
+    <div className=" h-full animate-enter gap-6">
 
-      {/* Status badge */}
-      <div className={cn(
-        'flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-medium transition-all duration-500 my-10',
-        connecting
-          ? 'bg-amber-500/10 text-amber-500'
-          : running
-            ? 'bg-emerald-500/10 text-emerald-500'
-            : 'bg-muted/40 text-muted-foreground',
-      )}>
-        {connecting ? (
-          <Loader2 className="h-3 w-3 animate-spin" />
-        ) : running ? (
-          <span className="relative flex h-2 w-2">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
-            <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
-          </span>
-        ) : (
-          <WifiOff className="h-3 w-3" />
-        )}
-        {statusText}
-      </div>
+      {/* ─── Controls Block ─────────────────────────────────────────── */}
+      <div className="flex flex-col items-center justify-start flex-1 gap-8">
 
-      {/* Main button area */}
-      <div className="relative flex items-center justify-center my-10">
-        {/* Ambient glow behind button */}
+        {/* Status badge */}
         <div className={cn(
-          'absolute inset-0 rounded-full blur-3xl transition-all duration-700 scale-150',
+          'flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-medium transition-all duration-500',
           connecting
-            ? 'bg-orange-500/15'
+            ? 'bg-amber-500/10 text-amber-500'
             : running
-              ? 'bg-primary/15'
-              : 'bg-transparent',
-        )} />
-
-        {/* Wave propagation rings */}
-        {(connecting || running) && (
-          <>
-            <span className={cn('wave-ring wave-ring-1', connecting && 'wave-ring-orange')} />
-            <span className={cn('wave-ring wave-ring-2', connecting && 'wave-ring-orange')} />
-            <span className={cn('wave-ring wave-ring-3', connecting && 'wave-ring-orange')} />
-            <span className={cn('wave-ring wave-ring-4', connecting && 'wave-ring-orange')} />
-            <span className={cn('wave-ring wave-ring-5', connecting && 'wave-ring-orange')} />
-          </>
-        )}
-
-        <Button
-          variant="ghost"
-          size="lg"
-          onClick={handleToggle}
-          className={cn(
-            'relative z-10 h-[5.25rem] w-[5.25rem] rounded-full text-base font-semibold shadow-lg',
-            'transition-all duration-300 hover:shadow-xl hover:scale-105 text-white border-0',
-            connecting
-              ? 'bg-gradient-to-br from-amber-400 to-orange-500 shadow-orange-400/30 hover:shadow-orange-400/40 animate-surf'
-              : running
-                ? 'gradient-primary shadow-primary/25 hover:shadow-primary/30 animate-surf'
-                : 'bg-gradient-to-br from-rose-400 to-red-400 shadow-rose-400/30 hover:shadow-rose-400/40',
+              ? 'bg-emerald-500/10 text-emerald-500'
+              : 'bg-muted/40 text-muted-foreground',
+        )}>
+          {connecting ? (
+            <Loader2 className="h-3 w-3 animate-spin" />
+          ) : running ? (
+            <span className="relative flex h-2 w-2">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+            </span>
+          ) : (
+            <WifiOff className="h-3 w-3" />
           )}
-        >
-          <div className="flex flex-col items-center gap-0.5">
-            {connecting ? (
-              <Loader2 className="h-5 w-5 animate-spin" />
-            ) : (
-              <Zap className={cn('h-5 w-5', running && 'animate-pulse')} />
+          {statusText}
+        </div>
+
+        {/* Main button area */}
+        <div className="relative flex items-center justify-center my-12">
+          <div className={cn(
+            'absolute inset-0 rounded-full blur-3xl transition-all duration-700 scale-150',
+            connecting
+              ? 'bg-orange-500/15'
+              : running
+                ? 'bg-primary/15'
+                : 'bg-transparent',
+          )} />
+
+          {(connecting || running) && (
+            <>
+              <span className={cn('wave-ring wave-ring-1', connecting && 'wave-ring-orange')} />
+              <span className={cn('wave-ring wave-ring-2', connecting && 'wave-ring-orange')} />
+              <span className={cn('wave-ring wave-ring-3', connecting && 'wave-ring-orange')} />
+              <span className={cn('wave-ring wave-ring-4', connecting && 'wave-ring-orange')} />
+              <span className={cn('wave-ring wave-ring-5', connecting && 'wave-ring-orange')} />
+            </>
+          )}
+
+          <Button
+            variant="ghost"
+            size="lg"
+            onClick={handleToggle}
+            className={cn(
+              'relative z-10 h-[5.25rem] w-[5.25rem] rounded-full text-base font-semibold shadow-lg',
+              'transition-all duration-300 hover:shadow-xl hover:scale-105 text-white border-0',
+              connecting
+                ? 'bg-gradient-to-br from-amber-400 to-orange-500 shadow-orange-400/30 hover:shadow-orange-400/40 animate-surf'
+                : running
+                  ? 'gradient-primary shadow-primary/25 hover:shadow-primary/30 animate-surf'
+                  : 'bg-gradient-to-br from-rose-400 to-red-400 shadow-rose-400/30 hover:shadow-rose-400/40',
             )}
-            <span className="text-xs">{label}</span>
-          </div>
-        </Button>
-      </div>
+          >
+            <div className="flex flex-col items-center gap-0.5">
+              {connecting ? (
+                <Loader2 className="h-5 w-5 animate-spin" />
+              ) : (
+                <Zap className={cn('h-5 w-5', running && 'animate-pulse')} />
+              )}
+              <span className="text-xs">{label}</span>
+            </div>
+          </Button>
+        </div>
 
-      {/* Info cards */}
-      <div className={cn(
-        'grid grid-cols-3 gap-3 w-full max-w-sm transition-all duration-500 my-10',
-        (running || connecting) ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none',
-      )}>
-        <InfoCard
-          icon={<Clock className="h-3.5 w-3.5" />}
-          label="Elapsed"
-          value={running ? formatTime(elapsed) : '--:--'}
-        />
-        <InfoCard
-          icon={<Globe className="h-3.5 w-3.5" />}
-          label="Languages"
-          value={running ? `${sourceLanguage.toUpperCase()} → ${targetLanguage.toUpperCase()}` : '—'}
-        />
-        <InfoCard
-          icon={running ? <Wifi className="h-3.5 w-3.5" /> : <Radio className="h-3.5 w-3.5" />}
-          label="Status"
-          value={connecting ? 'Pending' : running ? 'Active' : '—'}
-        />
-      </div>
+        {/* Info cards */}
+        <div className={cn(
+          'grid grid-cols-3 gap-3 w-full max-w-sm transition-all duration-500',
+        )}>
+          <InfoCard
+            icon={<Clock className="h-3.5 w-3.5" />}
+            label="Elapsed"
+            value={running ? formatTime(elapsed) : '--:--'}
+          />
+          <InfoCard
+            icon={<Globe className="h-3.5 w-3.5" />}
+            label="Languages"
+            value={`${sourceLanguage.toUpperCase()} → ${targetLanguage.toUpperCase()}`}
+          />
+          <InfoCard
+            icon={running ? <Wifi className="h-3.5 w-3.5" /> : <Radio className="h-3.5 w-3.5" />}
+            label="Status"
+            value={connecting ? 'Pending' : running ? 'Active' : '—'}
+          />
+        </div>
 
-      {/* Validation errors */}
-      {errors.length > 0 && (
-        <div className="w-full max-w-sm rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 animate-fade-in">
+        {/* Validation errors */}
+        <div className={cn(
+          'w-full max-w-sm rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 transition-all duration-300',
+          errors.length > 0 ? 'opacity-100' : 'opacity-0 h-0 overflow-hidden p-0 border-0',
+        )}>
           <div className="flex items-center gap-2 mb-2">
             <AlertTriangle className="h-4 w-4 text-destructive" />
-            <span className="text-sm font-medium text-destructive">Please configure before connecting</span>
+            <span className="text-sm font-medium text-destructive">Unable to connect</span>
           </div>
           <ul className="space-y-1 ml-6">
             {errors.map((err) => (
@@ -180,29 +311,120 @@ export function DashboardPage() {
             ))}
           </ul>
         </div>
-      )}
-    </div>
-  );
-}
-
-// ─── InfoCard ────────────────────────────────────────────────────────
-
-function InfoCard({
-  icon,
-  label,
-  value,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: string;
-}) {
-  return (
-    <div className="flex flex-col items-center gap-1.5 rounded-lg bg-card/60 border border-border/30 px-3 py-3 backdrop-blur-sm">
-      <div className="flex items-center gap-1.5 text-muted-foreground">
-        {icon}
-        <span className="text-[10px] uppercase tracking-wide font-medium">{label}</span>
       </div>
-      <span className="text-sm font-semibold text-foreground/80 font-mono">{value}</span>
+
+    {/* ─── Toggle Controls ──────────────────────────────────────────── */}
+    <div className="flex gap-3 max-w-lg mt-4 animate-fade-in">
+
+      {/* Monitor toggle — listen to output mic through speaker */}
+      {selectedOutputMicId && selectedSpeakerId && (
+        <div className="flex-1 flex items-center justify-between rounded-lg bg-card/60 border border-border/30 px-4 py-3 backdrop-blur-sm">
+          <div className="flex items-center gap-2.5">
+            <Volume2 className={cn('h-4 w-4', monitoring ? 'text-primary' : 'text-muted-foreground')} />
+            <div>
+              <span className="text-xs font-medium">Listen</span>
+              <p className="text-[10px] text-muted-foreground">Listen to translated output</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={monitoring}
+            onClick={toggleMonitoring}
+            className={cn(
+              'relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50',
+              monitoring ? 'bg-primary' : 'bg-muted',
+            )}
+          >
+            <span
+              className={cn(
+                'pointer-events-none block h-4 w-4 rounded-full bg-white shadow-sm transition-transform duration-200',
+                monitoring ? 'translate-x-[18px]' : 'translate-x-0.5',
+              )}
+            />
+          </button>
+        </div>
+      )}
+
+      {/* Transcript toggle */}
+      <div className="flex-1 flex items-center justify-between rounded-lg bg-card/60 border border-border/30 px-4 py-3 backdrop-blur-sm">
+        <div className="flex items-center gap-2.5">
+          <MessageSquare className={cn('h-4 w-4', showTranscript ? 'text-primary' : 'text-muted-foreground')} />
+          <div>
+            <span className="text-xs font-medium">View Text</span>
+            <p className="text-[10px] text-muted-foreground">View transcript - translated text</p>
+          </div>
+        </div>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={showTranscript}
+          onClick={() => setShowTranscript(!showTranscript)}
+          className={cn(
+            'relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50',
+            showTranscript ? 'bg-primary' : 'bg-muted',
+          )}
+        >
+          <span
+            className={cn(
+              'pointer-events-none block h-4 w-4 rounded-full bg-white shadow-sm transition-transform duration-200',
+              showTranscript ? 'translate-x-[18px]' : 'translate-x-0.5',
+            )}
+          />
+        </button>
+      </div>
+
+    </div>
+
+    {/* ─── Transcript & Translation Block ─────────────────────────── */}
+      <div className="w-1/2 mt-4 animate-fade-in">
+        <div className="rounded-lg bg-card/60 border border-border/30 backdrop-blur-sm overflow-hidden">
+          <div className="flex items-center justify-between px-4 py-2.5 border-b border-border/30">
+            <div className="flex items-center gap-2">
+              <MessageSquare className="h-3.5 w-3.5 text-muted-foreground" />
+              <span className="text-xs font-medium">Live Transcript</span>
+            </div>
+            {entries.length > 0 && (
+              <button
+                type="button"
+                onClick={() => { setEntries([]); setLiveTranscript(''); setLiveTranslation(''); entryIdRef.current = 0; }}
+                className="text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+          <div className="max-h-72 overflow-y-auto p-3 space-y-2.5">
+            {entries.length === 0 && !liveTranscript && (
+              <p className="text-xs text-muted-foreground text-center py-4">
+                Waiting for speech…
+              </p>
+            )}
+
+            {entries.map((entry) => (
+              <div key={entry.id} className="space-y-0.5">
+                <p className="text-xs text-foreground/90 leading-relaxed">Transcript: {entry.transcript}</p>
+                {entry.translation && (
+                  <p className="text-xs text-primary/80 leading-relaxed">Translation: {entry.translation}</p>
+                )}
+              </div>
+            ))}
+
+            {/* In-progress transcript */}
+            {liveTranscript && (
+              <div className="space-y-0.5">
+                <p className="text-xs text-foreground/50 leading-relaxed italic">{liveTranscript}</p>
+                {liveTranslation && (
+                  <p className="text-xs text-primary/40 leading-relaxed italic">{liveTranslation}</p>
+                )}
+              </div>
+            )}
+
+            <div ref={transcriptEndRef} />
+          </div>
+        </div>
+      </div>
+
     </div>
   );
 }

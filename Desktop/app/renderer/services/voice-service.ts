@@ -34,7 +34,7 @@ class VoiceService {
   private reconnectAttempts = 0;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private sessionId: string | null = null;
-  private lastValidationErrors: string[] = [];
+  private lastErrors: string[] = [];
 
   // Audio streaming
   private audioCtx: AudioContext | null = null;
@@ -68,6 +68,7 @@ class VoiceService {
     }
 
     this.reconnectAttempts = 0;
+    this.clearReconnect();
     await new Promise((resolve) => setTimeout(resolve, 3000));
     this.openConnection();
   }
@@ -120,8 +121,8 @@ class VoiceService {
     return this.sessionId;
   }
 
-  getValidationErrors(): string[] {
-    return this.lastValidationErrors;
+  getErrors(): string[] {
+    return this.lastErrors;
   }
 
   // ─── Private ────────────────────────────────────────────────────────
@@ -133,29 +134,23 @@ class VoiceService {
     const errors = await this.validateSettings();
     if (errors.length > 0) {
       console.error('[VoiceService] Settings validation failed:', errors);
-      this.lastValidationErrors = errors;
+      this.lastErrors = errors;
       this.setStatus('error');
       return;
     }
-    this.lastValidationErrors = [];
+    this.lastErrors = [];
 
     this.setStatus('connecting');
 
     const token = encodeURIComponent(this.config.authSecret);
     const url = `${this.config.wsUrl}?token=${token}`;
 
-    try {
-      this.ws = new WebSocket(url);
-    } catch (err) {
-      console.error('[VoiceService] Failed to create WebSocket:', err);
-      this.setStatus('error');
-      this.scheduleReconnect();
-      return;
-    }
+    this.ws = new WebSocket(url);
 
     this.ws.onopen = () => {
       console.log('[VoiceService] Connected');
       this.reconnectAttempts = 0;
+      this.lastErrors = [];
       this.setStatus('connected');
     };
 
@@ -176,13 +171,21 @@ class VoiceService {
 
       if (event.code === 4401) {
         console.error('[VoiceService] Authentication failed');
+        this.lastErrors = ['Authentication failed — check your server credentials'];
         this.setStatus('error');
         return;
       }
 
       if (event.code !== 1000 && this.status !== 'disconnected') {
-        this.setStatus('disconnected');
-        this.scheduleReconnect();
+        const { autoReconnect } = useAppStore.getState();
+        if (autoReconnect) {
+          this.lastErrors = ['Connection to server lost — reconnecting…'];
+          this.setStatus('error');
+          this.scheduleReconnect();
+        } else {
+          this.lastErrors = ['Connection to server lost'];
+          this.setStatus('error');
+        }
       } else {
         this.setStatus('disconnected');
       }
@@ -235,6 +238,7 @@ class VoiceService {
 
     if (this.reconnectAttempts >= this.config.maxReconnectAttempts) {
       console.warn('[VoiceService] Max reconnect attempts reached');
+      this.lastErrors = ['Unable to connect to server — max reconnection attempts reached'];
       this.setStatus('error');
       return;
     }
@@ -325,7 +329,7 @@ class VoiceService {
       errors.push('Target language is not set');
     }
 
-    // Check devices exist in the system
+    // Check devices are selected
     if (!state.selectedMicId) {
       errors.push('Input microphone is not selected');
     }
@@ -340,14 +344,11 @@ class VoiceService {
         const audioInputIds = new Set(
           devices.filter((d) => d.kind === 'audioinput').map((d) => d.deviceId),
         );
-        const audioOutputIds = new Set(
-          devices.filter((d) => d.kind === 'audioinput').map((d) => d.deviceId),
-        );
 
         if (state.selectedMicId && !audioInputIds.has(state.selectedMicId)) {
           errors.push(`Input microphone "${state.selectedMicLabel}" is no longer available`);
         }
-        if (state.selectedOutputMicId && !audioOutputIds.has(state.selectedOutputMicId)) {
+        if (state.selectedOutputMicId && !audioInputIds.has(state.selectedOutputMicId)) {
           errors.push(`Output microphone "${state.selectedOutputMicLabel}" is no longer available`);
         }
       } catch {
