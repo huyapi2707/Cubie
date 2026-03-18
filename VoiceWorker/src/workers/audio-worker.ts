@@ -4,27 +4,30 @@
  * Runs inside a Node.js worker thread. Receives task messages from the
  * main thread, executes the appropriate processing handler, and posts
  * results back.
- *
- * In a production deployment, the stub handlers here would be replaced
- * with real SDK calls to STT, translation, and TTS services.
  */
 
 import { parentPort } from "node:worker_threads";
+import { STTFactory, TranslatorFactory, TTSFactory } from "../services/voice-factory.js";
+import { GoogleSTTProvider } from "../services/stt/index.js";
+import { GoogleTranslatorProvider } from "../services/translator/index.js";
+import { GoogleTTSProvider } from "../services/tts/index.js";
 import type {
   WorkerMessage,
   WorkerResponse,
   WorkerTaskResult,
   SttPayload,
-  SttResult,
   TranslatePayload,
-  TranslateResult,
   TtsPayload,
-  TtsResult,
 } from "../types/worker.js";
 
 if (!parentPort) {
   throw new Error("This module must be run as a Worker Thread");
 }
+
+// ─── Register providers in this worker thread ────────────────────────────────
+STTFactory.register("google", new GoogleSTTProvider());
+TranslatorFactory.register("google", new GoogleTranslatorProvider());
+TTSFactory.register("google", new GoogleTTSProvider());
 
 const port = parentPort;
 
@@ -83,23 +86,14 @@ async function processTask(
 }
 
 /**
- * Speech-to-Text processing stub.
- *
- * Replace with actual STT SDK integration (e.g. Google Cloud Speech,
- * Azure Cognitive Services, Whisper API).
+ * Speech-to-Text via the registered STT provider.
  */
 async function processStt(
   sessionId: string,
   payload: SttPayload
 ): Promise<Omit<WorkerTaskResult, "durationMs">> {
-  // Simulate processing time
-  await sleep(50 + Math.random() * 100);
-
-  const sttResult: SttResult = {
-    text: `[STT result for ${payload.audioBuffer.length} bytes in ${payload.language}]`,
-    isFinal: true,
-    confidence: 0.95,
-  };
+  const provider = STTFactory.getProvider("google");
+  const sttResult = await provider.transcribe(payload);
 
   return {
     type: "stt",
@@ -110,22 +104,14 @@ async function processStt(
 }
 
 /**
- * Translation processing stub.
- *
- * Replace with actual translation API (e.g. Google Translate,
- * DeepL, Azure Translator).
+ * Translation via the registered Translator provider.
  */
 async function processTranslate(
   sessionId: string,
   payload: TranslatePayload
 ): Promise<Omit<WorkerTaskResult, "durationMs">> {
-  await sleep(30 + Math.random() * 70);
-
-  const translateResult: TranslateResult = {
-    text: `[Translated: "${payload.text}" from ${payload.sourceLanguage} to ${payload.targetLanguage}]`,
-    sourceLanguage: payload.sourceLanguage,
-    targetLanguage: payload.targetLanguage,
-  };
+  const provider = TranslatorFactory.getProvider("google");
+  const translateResult = await provider.translate(payload);
 
   return {
     type: "translate",
@@ -135,35 +121,28 @@ async function processTranslate(
   };
 }
 
-/**
- * Text-to-Speech processing stub.
- *
- * Replace with actual TTS SDK (e.g. Google Cloud TTS,
- * Azure Cognitive Services, ElevenLabs).
- */
 async function processTts(
   sessionId: string,
-  _payload: TtsPayload
+  payload: TtsPayload
 ): Promise<Omit<WorkerTaskResult, "durationMs">> {
-  await sleep(60 + Math.random() * 120);
+  try {
+    const provider = TTSFactory.getProvider("google");
+    const ttsResult = await provider.synthesize(payload);
 
-  // Generate a small synthetic audio buffer as placeholder
-  const sampleAudio = Buffer.alloc(4800, 128); // ~100ms of 8-bit 48kHz mono
-
-  const ttsResult: TtsResult = {
-    audioBuffer: sampleAudio,
-    format: "pcm",
-    sampleRate: 48000,
-  };
-
-  return {
-    type: "tts",
-    sessionId,
-    success: true,
-    data: ttsResult,
-  };
+    return {
+      type: "tts",
+      sessionId,
+      success: true,
+      data: ttsResult,
+    };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    return {
+      type: "tts",
+      sessionId,
+      success: false,
+      error: message,
+    };
+  }
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}

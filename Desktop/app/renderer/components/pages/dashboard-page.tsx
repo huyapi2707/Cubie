@@ -6,28 +6,36 @@ import { useAppStore } from '@/store';
 import { voiceService } from '@/services';
 import { cn } from '@/lib/utils';
 
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+interface TranscriptEntry {
+  id: number;
+  transcript: string;
+  translation: string;
+}
+
+// ─── Component ────────────────────────────────────────────────────────────────
+
 export function DashboardPage() {
+  // ── Store ─────────────────────────────────────────────────────────────────
   const running = useAppStore((s) => s.running);
   const setRunning = useAppStore((s) => s.setRunning);
   const sourceLanguage = useAppStore((s) => s.sourceLanguage);
   const targetLanguage = useAppStore((s) => s.targetLanguage);
+  const outputMicId = useAppStore((s) => s.selectedOutputMicId);
+  const speakerId = useAppStore((s) => s.selectedSpeakerId);
+
+  // ── Local state ───────────────────────────────────────────────────────────
   const [connecting, setConnecting] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const [startTime, setStartTime] = useState<number | null>(null);
   const [errors, setErrors] = useState<string[]>([]);
-  const selectedOutputMicId = useAppStore((s) => s.selectedOutputMicId);
-  const selectedSpeakerId = useAppStore((s) => s.selectedSpeakerId);
-  const [monitoring, setMonitoring] = useState(false);
-  const [showTranscript, setShowTranscript] = useState(true);
-  const monitorCtxRef = useRef<AudioContext | null>(null);
-  const monitorStreamRef = useRef<MediaStream | null>(null);
 
-  // Transcript & translation
-  interface TranscriptEntry {
-    id: number;
-    transcript: string;
-    translation: string;
-  }
+  // Feature toggles
+  const [listening, setListening] = useState(false);
+  const [showTranscript, setShowTranscript] = useState(true);
+
+  // Transcript entries
   const [entries, setEntries] = useState<TranscriptEntry[]>([]);
   const [liveTranscript, setLiveTranscript] = useState('');
   const [liveTranslation, setLiveTranslation] = useState('');
@@ -36,7 +44,12 @@ export function DashboardPage() {
   const showTranscriptRef = useRef(showTranscript);
   showTranscriptRef.current = showTranscript;
 
-  // Connect/disconnect the voice server when the button is clicked
+  // Listen refs (outputMic → speaker)
+  const listenCtxRef = useRef<AudioContext | null>(null);
+  const listenStreamRef = useRef<MediaStream | null>(null);
+
+  // ── 1. Onboard: connect/disconnect ────────────────────────────────────────
+
   const handleToggle = async () => {
     if (connecting) return;
 
@@ -52,7 +65,7 @@ export function DashboardPage() {
     }
   };
 
-  // Sync state from voiceService status changes
+  // Sync connection status
   useEffect(() => {
     const unsubscribe = voiceService.onStatus((status) => {
       if (status === 'connected') {
@@ -86,10 +99,79 @@ export function DashboardPage() {
     return () => clearInterval(timer);
   }, [startTime]);
 
-  // Subscribe to voice service messages for transcript/translation
+  // Stream server audio (TTS) → outputMic
+  useEffect(() => {
+    const unsubscribe = voiceService.onAudio((audio, sampleRate) => {
+      playTtsToOutputMic(audio, sampleRate);
+    });
+    return unsubscribe;
+  }, [outputMicId]);
+
+  // ── 2. Listen: stream outputMic → speaker ─────────────────────────────────
+
+  const stopListening = useCallback(() => {
+    if (listenStreamRef.current) {
+      listenStreamRef.current.getTracks().forEach((t) => t.stop());
+      listenStreamRef.current = null;
+    }
+    if (listenCtxRef.current) {
+      listenCtxRef.current.close().catch(() => {});
+      listenCtxRef.current = null;
+    }
+    setListening(false);
+  }, []);
+
+  const startListening = useCallback(async () => {
+    if (!outputMicId || listening) return;
+
+    try {
+      // Capture audio from the output mic (virtual cable)
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: { deviceId: { exact: outputMicId } },
+      });
+      listenStreamRef.current = stream;
+
+      // Create context and route to the speaker
+      const ctx = new AudioContext();
+      await ctx.resume();
+
+      if (typeof (ctx as any).setSinkId === 'function' && speakerId) {
+        const sinkId = speakerId === 'default' ? '' : speakerId;
+        await (ctx as any).setSinkId(sinkId);
+      }
+
+      listenCtxRef.current = ctx;
+      const source = ctx.createMediaStreamSource(stream);
+      source.connect(ctx.destination);
+
+      setListening(true);
+    } catch (err) {
+      console.error('[Dashboard] Failed to start listening:', err);
+      stopListening();
+    }
+  }, [outputMicId, speakerId, listening, stopListening]);
+
+  const toggleListening = useCallback(() => {
+    if (listening) {
+      stopListening();
+    } else {
+      startListening();
+    }
+  }, [listening, stopListening, startListening]);
+
+  // Stop listening when connection drops
+  useEffect(() => {
+    if (!running && listening) {
+      stopListening();
+    }
+  }, [running]);
+
+  // ── 3. Transcript & translation ───────────────────────────────────────────
+
   useEffect(() => {
     const unsubscribe = voiceService.onMessage((message) => {
       if (!showTranscriptRef.current) return;
+
       if (message.type === 'transcript') {
         const text = message.text as string;
         const isFinal = message.isFinal as boolean;
@@ -127,70 +209,36 @@ export function DashboardPage() {
     transcriptEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [entries, liveTranscript]);
 
-  // Stop monitoring when connection drops
-  useEffect(() => {
-    if (!running && monitoring) {
-      stopMonitoring();
-    }
-  }, [running]);
+  const clearTranscript = () => {
+    setEntries([]);
+    setLiveTranscript('');
+    setLiveTranslation('');
+    entryIdRef.current = 0;
+  };
 
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => stopMonitoring();
-  }, []);
+  // ── Helpers ───────────────────────────────────────────────────────────────
 
-  const stopMonitoring = useCallback(() => {
-    if (monitorStreamRef.current) {
-      monitorStreamRef.current.getTracks().forEach((t) => t.stop());
-      monitorStreamRef.current = null;
-    }
-    if (monitorCtxRef.current) {
-      monitorCtxRef.current.close().catch(() => {});
-      monitorCtxRef.current = null;
-    }
-    setMonitoring(false);
-  }, []);
+  /** Play TTS audio received from the server through the output mic. */
+  function playTtsToOutputMic(audio: Float32Array, sampleRate: number) {
+    const ctx = new AudioContext({ sampleRate });
 
-  const startMonitoring = useCallback(async () => {
-    if (!selectedOutputMicId || monitoring) return;
-
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: { deviceId: { exact: selectedOutputMicId } },
+    // Route to the output mic (virtual cable)
+    if (typeof (ctx as any).setSinkId === 'function' && outputMicId) {
+      const sinkId = outputMicId === 'default' ? '' : outputMicId;
+      (ctx as any).setSinkId(sinkId).catch((err: Error) => {
+        console.warn('[Dashboard] Failed to route TTS to output mic:', err);
       });
-      monitorStreamRef.current = stream;
-
-      const ctx = new AudioContext();
-      await ctx.resume();
-
-      try {
-        if (typeof (ctx as any).setSinkId === 'function') {
-          const sinkId = selectedSpeakerId === 'default' ? '' : selectedSpeakerId;
-          await (ctx as any).setSinkId(sinkId);
-        }
-      } catch {
-        // Fall back to default output
-      }
-
-      monitorCtxRef.current = ctx;
-
-      const source = ctx.createMediaStreamSource(stream);
-      source.connect(ctx.destination);
-
-      setMonitoring(true);
-    } catch (err) {
-      console.error('[Dashboard] Failed to start monitoring:', err);
-      stopMonitoring();
     }
-  }, [selectedOutputMicId, selectedSpeakerId, monitoring, stopMonitoring]);
 
-  const toggleMonitoring = useCallback(() => {
-    if (monitoring) {
-      stopMonitoring();
-    } else {
-      startMonitoring();
-    }
-  }, [monitoring, stopMonitoring, startMonitoring]);
+    const buffer = ctx.createBuffer(1, audio.length, sampleRate);
+    buffer.getChannelData(0).set(audio);
+
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+    source.connect(ctx.destination);
+    source.onended = () => ctx.close();
+    source.start();
+  }
 
   const formatTime = (s: number) => {
     const m = Math.floor(s / 60);
@@ -198,8 +246,17 @@ export function DashboardPage() {
     return `${m.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}`;
   };
 
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => stopListening();
+  }, []);
+
+  // ── Derived ───────────────────────────────────────────────────────────────
+
   const label = connecting ? 'Connecting' : running ? 'Listening' : 'Onboard';
   const statusText = connecting ? 'Establishing connection…' : running ? 'Live — Translating in real time' : 'Ready to connect';
+
+  // ── Render ────────────────────────────────────────────────────────────────
 
   return (
     <div className=" h-full animate-enter gap-6">
@@ -316,11 +373,11 @@ export function DashboardPage() {
     {/* ─── Toggle Controls ──────────────────────────────────────────── */}
     <div className="flex gap-3 max-w-lg mt-4 animate-fade-in">
 
-      {/* Monitor toggle — listen to output mic through speaker */}
-      {selectedOutputMicId && selectedSpeakerId && (
+      {/* Listen toggle — stream outputMic → speaker */}
+      {outputMicId && speakerId && (
         <div className="flex-1 flex items-center justify-between rounded-lg bg-card/60 border border-border/30 px-4 py-3 backdrop-blur-sm">
           <div className="flex items-center gap-2.5">
-            <Volume2 className={cn('h-4 w-4', monitoring ? 'text-primary' : 'text-muted-foreground')} />
+            <Volume2 className={cn('h-4 w-4', listening ? 'text-primary' : 'text-muted-foreground')} />
             <div>
               <span className="text-xs font-medium">Listen</span>
               <p className="text-[10px] text-muted-foreground">Listen to translated output</p>
@@ -329,24 +386,24 @@ export function DashboardPage() {
           <button
             type="button"
             role="switch"
-            aria-checked={monitoring}
-            onClick={toggleMonitoring}
+            aria-checked={listening}
+            onClick={toggleListening}
             className={cn(
               'relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50',
-              monitoring ? 'bg-primary' : 'bg-muted',
+              listening ? 'bg-primary' : 'bg-muted',
             )}
           >
             <span
               className={cn(
                 'pointer-events-none block h-4 w-4 rounded-full bg-white shadow-sm transition-transform duration-200',
-                monitoring ? 'translate-x-[18px]' : 'translate-x-0.5',
+                listening ? 'translate-x-[18px]' : 'translate-x-0.5',
               )}
             />
           </button>
         </div>
       )}
 
-      {/* Transcript toggle */}
+      {/* Transcript toggle — show/hide transcript & translation */}
       <div className="flex-1 flex items-center justify-between rounded-lg bg-card/60 border border-border/30 px-4 py-3 backdrop-blur-sm">
         <div className="flex items-center gap-2.5">
           <MessageSquare className={cn('h-4 w-4', showTranscript ? 'text-primary' : 'text-muted-foreground')} />
@@ -387,7 +444,7 @@ export function DashboardPage() {
             {entries.length > 0 && (
               <button
                 type="button"
-                onClick={() => { setEntries([]); setLiveTranscript(''); setLiveTranslation(''); entryIdRef.current = 0; }}
+                onClick={clearTranscript}
                 className="text-muted-foreground hover:text-foreground transition-colors"
               >
                 <Trash2 className="h-3.5 w-3.5" />

@@ -1,5 +1,8 @@
 import type { VoiceConfig } from '@shared/ipc';
 import { useAppStore } from '@/store';
+import * as vad from '@ricky0123/vad-web';
+import { encodeOpus } from './opus-encoder';
+import { isOpusEncoded, decodeOpus } from './opus-decoder';
 
 // ─── Types ──────────────────────────────────────────────────────────
 
@@ -12,6 +15,7 @@ interface VoiceServerMessage {
 
 type MessageHandler = (message: VoiceServerMessage) => void;
 type StatusHandler = (status: ConnectionStatus) => void;
+type AudioHandler = (audio: Float32Array, sampleRate: number) => void;
 
 // ─── Voice Service ──────────────────────────────────────────────────
 
@@ -36,13 +40,12 @@ class VoiceService {
   private sessionId: string | null = null;
   private lastErrors: string[] = [];
 
-  // Audio streaming
-  private audioCtx: AudioContext | null = null;
-  private mediaStream: MediaStream | null = null;
-  private workletNode: AudioWorkletNode | null = null;
+  // Audio streaming (MicVAD)
+  private micVad: InstanceType<typeof vad.MicVAD> | null = null;
 
   private messageHandlers: Set<MessageHandler> = new Set();
   private statusHandlers: Set<StatusHandler> = new Set();
+  private audioHandlers: Set<AudioHandler> = new Set();
 
   // ─── Public API ─────────────────────────────────────────────────────
 
@@ -69,7 +72,6 @@ class VoiceService {
 
     this.reconnectAttempts = 0;
     this.clearReconnect();
-    await new Promise((resolve) => setTimeout(resolve, 3000));
     this.openConnection();
   }
 
@@ -113,6 +115,16 @@ class VoiceService {
     return () => this.statusHandlers.delete(handler);
   }
 
+  /**
+   * Subscribe to incoming audio data (decoded TTS from server).
+   * Handler receives Float32Array PCM samples and the sample rate.
+   * Returns an unsubscribe function.
+   */
+  onAudio(handler: AudioHandler): () => void {
+    this.audioHandlers.add(handler);
+    return () => this.audioHandlers.delete(handler);
+  }
+
   getStatus(): ConnectionStatus {
     return this.status;
   }
@@ -154,7 +166,7 @@ class VoiceService {
       this.setStatus('connected');
     };
 
-    this.ws.onmessage = (event) => {
+    this.ws.onmessage = async (event) => {
       if (typeof event.data === 'string') {
         try {
           const message = JSON.parse(event.data) as VoiceServerMessage;
@@ -162,6 +174,8 @@ class VoiceService {
         } catch (err) {
           console.error('[VoiceService] Failed to parse message:', err);
         }
+      } else if (event.data instanceof Blob) {
+        this.handleBinaryMessage(event.data);
       }
     };
 
@@ -221,6 +235,21 @@ class VoiceService {
     this.messageHandlers.forEach((handler) => handler(message));
   }
 
+  private async handleBinaryMessage(blob: Blob): Promise<void> {
+    try {
+      const arrayBuffer = await blob.arrayBuffer();
+      if (isOpusEncoded(arrayBuffer)) {
+        const pcmAudio = await decodeOpus(arrayBuffer);
+        const sampleRate = 24000;
+        this.audioHandlers.forEach((h) => h(pcmAudio, sampleRate));
+      } else {
+        console.warn('[VoiceService] Received unknown binary message');
+      }
+    } catch (err) {
+      console.error('[VoiceService] Failed to decode audio:', err);
+    }
+  }
+
   private sendJSON(data: Record<string, unknown>): void {
     if (this.ws?.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(data));
@@ -259,60 +288,59 @@ class VoiceService {
     }
   }
 
-  // ─── Audio Streaming ────────────────────────────────────────────────
+  // ─── Audio Streaming (MicVAD) ──────────────────────────────────────
 
   private async startAudioStream(deviceId: string): Promise<void> {
     try {
-      this.mediaStream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          deviceId: { exact: deviceId },
-          sampleRate: 16000,
-          channelCount: 1,
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
+      this.micVad = await vad.MicVAD.new({
+        startOnLoad: true,
+        baseAssetPath: './',
+        onnxWASMBasePath: './',
+        getStream: () =>
+          navigator.mediaDevices.getUserMedia({
+            audio: {
+              deviceId: { exact: deviceId },
+              channelCount: 1,
+              sampleRate: 16000,
+              echoCancellation: true,
+              noiseSuppression: true,
+              autoGainControl: true,
+            },
+          }),
+        onSpeechStart: () => {
+          console.log('[VoiceService] Speech started');
+        },
+        onSpeechEnd: async (audio: Float32Array) => {
+          // audio is Float32Array at 16kHz — encode with Opus and send
+          if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+
+          try {
+            const opusData = await encodeOpus(audio);
+            this.ws.send(opusData);
+            console.log(
+              `[VoiceService] Sent Opus utterance: ${audio.length} samples (${(audio.length / 16000).toFixed(2)}s), ${opusData.byteLength} bytes`,
+            );
+          } catch (err) {
+            console.error('[VoiceService] Opus encoding failed, sending raw:', err);
+            // Fallback: send raw PCM
+            this.ws.send(audio.buffer);
+          }
+        },
+        onVADMisfire: () => {
+          console.log('[VoiceService] VAD misfire (speech too short)');
         },
       });
 
-      this.audioCtx = new AudioContext({ sampleRate: 16000 });
-
-      // Load the worklet processor from a static file (public/ directory)
-      await this.audioCtx.audioWorklet.addModule('./pcm-forwarder-processor.js');
-
-      const source = this.audioCtx.createMediaStreamSource(this.mediaStream);
-      this.workletNode = new AudioWorkletNode(this.audioCtx, 'pcm-forwarder');
-
-      // Receive Float32 PCM from the worklet thread → send as binary
-      this.workletNode.port.onmessage = (event: MessageEvent<Float32Array>) => {
-        if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
-        this.ws.send(event.data.buffer);
-      };
-
-      source.connect(this.workletNode);
-      // AudioWorkletNode must be connected to destination to keep the graph alive
-      this.workletNode.connect(this.audioCtx.destination);
-
-      console.log('[VoiceService] Audio streaming started (AudioWorklet)');
+      console.log('[VoiceService] Audio streaming started (MicVAD)');
     } catch (err) {
       console.error('[VoiceService] Failed to start audio stream:', err);
     }
   }
 
   private stopAudioStream(): void {
-    if (this.workletNode) {
-      this.workletNode.port.onmessage = null;
-      this.workletNode.disconnect();
-      this.workletNode = null;
-    }
-
-    if (this.mediaStream) {
-      this.mediaStream.getTracks().forEach((t) => t.stop());
-      this.mediaStream = null;
-    }
-
-    if (this.audioCtx) {
-      this.audioCtx.close().catch(() => {});
-      this.audioCtx = null;
+    if (this.micVad) {
+      this.micVad.destroy();
+      this.micVad = null;
     }
 
     console.log('[VoiceService] Audio streaming stopped');

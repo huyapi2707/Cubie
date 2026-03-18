@@ -8,11 +8,11 @@ const log = createChildLogger({ module: "session-manager" });
 
 /**
  * Manages the lifecycle of client sessions.
- * Each WebSocket connection gets its own isolated session with
- * independent audio buffers and language configuration.
+ * Each WebSocket connection gets its own isolated session
+ * with language configuration and streaming state.
  */
 export class SessionManager {
-  /** Active sessions keyed by session ID — always local to the process */
+  /** Active sessions keyed by session ID */
   private sessions = new Map<string, Session>();
 
   /** External session metadata store (memory or Redis) */
@@ -49,8 +49,6 @@ export class SessionManager {
     const session: Session = {
       id,
       websocket: ws,
-      audioBuffer: [],
-      audioBufferSize: 0,
       sourceLanguage: "en",
       targetLanguage: "en",
       isStreaming: false,
@@ -63,7 +61,6 @@ export class SessionManager {
     metrics.increment("sessions.created");
     metrics.gauge("sessions.active", this.sessions.size);
 
-    // Persist metadata to the external store
     await this.store.set(id, this.toMetadata(session));
 
     log.info({ sessionId: id, userId }, "Session created");
@@ -78,7 +75,7 @@ export class SessionManager {
   }
 
   /**
-   * Update session language configuration.
+   * Update session configuration.
    */
   async updateSession(
     sessionId: string,
@@ -94,61 +91,12 @@ export class SessionManager {
   }
 
   /**
-   * Append audio data to a session's buffer.
-   * Returns false if the buffer limit would be exceeded.
-   */
-  appendAudio(sessionId: string, chunk: Buffer): boolean {
-    const session = this.sessions.get(sessionId);
-    if (!session) return false;
-
-    // Enforce buffer size limits
-    if (
-      session.audioBufferSize + chunk.length >
-      config.AUDIO_BUFFER_MAX_BYTES
-    ) {
-      log.warn(
-        { sessionId, currentSize: session.audioBufferSize, chunkSize: chunk.length },
-        "Audio buffer limit exceeded"
-      );
-      return false;
-    }
-
-    session.audioBuffer.push(chunk);
-    session.audioBufferSize += chunk.length;
-    session.lastActivityAt = new Date();
-
-    metrics.increment("audio.chunks_received");
-    metrics.increment("audio.bytes_received", chunk.length);
-
-    return true;
-  }
-
-  /**
-   * Drain and return the current audio buffer, resetting it.
-   */
-  drainAudioBuffer(sessionId: string): Buffer | null {
-    const session = this.sessions.get(sessionId);
-    if (!session || session.audioBuffer.length === 0) return null;
-
-    const combined = Buffer.concat(session.audioBuffer);
-    session.audioBuffer = [];
-    session.audioBufferSize = 0;
-
-    return combined;
-  }
-
-  /**
    * Destroy a session and clean up resources.
    */
   async destroySession(sessionId: string, reason: string): Promise<void> {
     const session = this.sessions.get(sessionId);
     if (!session) return;
 
-    // Clear audio buffer
-    session.audioBuffer = [];
-    session.audioBufferSize = 0;
-
-    // Close WebSocket if still open
     if (
       session.websocket.readyState === session.websocket.OPEN ||
       session.websocket.readyState === session.websocket.CONNECTING
@@ -210,7 +158,6 @@ export class SessionManager {
         log.warn({ sessionId: id, elapsedMs: elapsed }, "Session heartbeat timeout");
         void this.destroySession(id, "heartbeat_timeout");
       } else {
-        // Send ping to keep NATs and proxies alive
         if (session.websocket.readyState === session.websocket.OPEN) {
           session.websocket.ping();
         }
@@ -226,7 +173,6 @@ export class SessionManager {
       isStreaming: session.isStreaming,
       createdAt: session.createdAt.toISOString(),
       lastActivityAt: session.lastActivityAt.toISOString(),
-      audioBufferSize: session.audioBufferSize,
       userId: session.userId,
     };
   }

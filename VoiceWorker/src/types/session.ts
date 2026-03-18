@@ -5,10 +5,6 @@ export interface Session {
   id: string;
   /** WebSocket connection handle */
   websocket: WebSocket;
-  /** Accumulated audio buffer for current processing window */
-  audioBuffer: Buffer[];
-  /** Total buffered bytes for limit enforcement */
-  audioBufferSize: number;
   /** Source language code (e.g. "en") */
   sourceLanguage: string;
   /** Target language code (e.g. "ja") */
@@ -30,7 +26,6 @@ export interface SessionMetadata {
   isStreaming: boolean;
   createdAt: string;
   lastActivityAt: string;
-  audioBufferSize: number;
   userId?: string;
 }
 

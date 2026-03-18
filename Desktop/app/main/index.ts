@@ -194,8 +194,8 @@ function setupCSP(): void {
     // In dev, Vite injects inline scripts for HMR — allow them.
     // In production, keep strict script-src 'self' only.
     const scriptSrc = isDev
-      ? "script-src 'self' 'unsafe-inline'"
-      : "script-src 'self'";
+      ? "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'"
+      : "script-src 'self' 'wasm-unsafe-eval'";
 
     const connectSrc = isDev
       ? `connect-src 'self' ${VOICE_SERVER_WS} ${VOICE_SERVER_HTTP} ws://localhost:5173`
@@ -208,7 +208,7 @@ function setupCSP(): void {
       "font-src https://fonts.gstatic.com",
       connectSrc,
       "img-src 'self' data:",
-      "worker-src 'self'",
+      "worker-src 'self' blob:",
     ].join('; ');
 
     callback({

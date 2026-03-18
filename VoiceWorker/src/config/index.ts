@@ -33,11 +33,6 @@ const EnvSchema = z.object({
   WORKER_TASK_TIMEOUT_MS: z.coerce.number().int().positive().default(30_000),
 
   AUDIO_CHUNK_MAX_BYTES: z.coerce.number().int().positive().default(65_536),
-  AUDIO_BUFFER_MAX_BYTES: z.coerce
-    .number()
-    .int()
-    .positive()
-    .default(10_485_760),
 
   LOG_LEVEL: z
     .enum(["fatal", "error", "warn", "info", "debug", "trace"])

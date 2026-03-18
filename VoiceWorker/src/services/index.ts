@@ -1,2 +1,12 @@
 export { AudioPipelineService } from "./audio-pipeline.js";
 export type { PipelineResult } from "./audio-pipeline.js";
+
+export { STTFactory, TTSFactory, TranslatorFactory } from "./voice-factory.js";
+export type {
+  STTProvider,
+  TTSProvider,
+  TranslatorProvider,
+  STTProviderName,
+  TTSProviderName,
+  TranslatorProviderName,
+} from "./voice-factory.js";

@@ -4,6 +4,7 @@ import { config } from "../config/index.js";
 import { createChildLogger, metrics } from "../utils/index.js";
 import { SessionManager } from "../sessions/session-manager.js";
 import { AudioPipelineService } from "../services/audio-pipeline.js";
+import { isOpusEncoded, decodeOpus, encodeOpus } from "../services/opus-codec.js";
 import {
   ClientMessageSchema,
   type ServerMessage,
@@ -17,21 +18,15 @@ import {
 
 const log = createChildLogger({ module: "ws-gateway" });
 
-// Throttle: minimum ms between processing cycles per session
-const PROCESS_INTERVAL_MS = 300;
-
 /**
  * WebSocket Gateway
  *
  * Handles all WebSocket connection lifecycle events and message routing.
  * Each connection is assigned an isolated session via the SessionManager.
- * Binary audio frames are buffered and periodically flushed to the
- * AudioPipelineService for asynchronous processing.
+ * Binary audio frames are immediately dispatched to the
+ * AudioPipelineService for processing.
  */
 export class WebSocketGateway {
-  /** Tracks per-session processing intervals */
-  private processingTimers = new Map<string, ReturnType<typeof setInterval>>();
-
   constructor(
     private sessionManager: SessionManager,
     private audioPipeline: AudioPipelineService
@@ -157,9 +152,6 @@ export class WebSocketGateway {
           targetLanguage: message.targetLanguage,
           isStreaming: true,
         });
-
-        // Start periodic audio processing
-        this.startProcessing(sessionId);
         break;
 
       case "stop":
@@ -168,10 +160,6 @@ export class WebSocketGateway {
         void this.sessionManager.updateSession(sessionId, {
           isStreaming: false,
         });
-
-        // Stop periodic processing and flush remaining audio
-        this.stopProcessing(sessionId);
-        void this.flushAndProcess(sessionId);
 
         this.send(session.websocket, {
           type: "session_ended",
@@ -210,12 +198,13 @@ export class WebSocketGateway {
 
   /**
    * Handle binary audio frames from the client.
+   * Each frame is processed immediately through the pipeline.
    */
-  private handleBinaryMessage(
+  private async handleBinaryMessage(
     sessionId: string,
     data: Buffer,
     _sessionLog: ReturnType<typeof createChildLogger>
-  ): void {
+  ): Promise<void> {
     const session = this.sessionManager.getSession(sessionId);
     if (!session) return;
 
@@ -239,53 +228,19 @@ export class WebSocketGateway {
       return;
     }
 
-    // Append to session buffer
-    const success = this.sessionManager.appendAudio(sessionId, data);
-
-    if (!success) {
-      this.sendError(
-        session.websocket,
-        "BUFFER_FULL",
-        "Audio buffer is full. Please wait for processing to complete."
+    // Decode Opus if the message has the OPUS magic header
+    let audioBuffer: Buffer;
+    if (isOpusEncoded(data)) {
+      audioBuffer = decodeOpus(data);
+      _sessionLog.debug(
+        { opusBytes: data.length, pcmBytes: audioBuffer.length },
+        "Decoded Opus audio"
       );
+    } else {
+      audioBuffer = data;
     }
-  }
 
-  /**
-   * Start periodic audio buffer flushing and processing for a session.
-   */
-  private startProcessing(sessionId: string): void {
-    // Clear any existing timer
-    this.stopProcessing(sessionId);
-
-    const timer = setInterval(() => {
-      void this.flushAndProcess(sessionId);
-    }, PROCESS_INTERVAL_MS);
-
-    this.processingTimers.set(sessionId, timer);
-  }
-
-  /**
-   * Stop periodic processing for a session.
-   */
-  private stopProcessing(sessionId: string): void {
-    const timer = this.processingTimers.get(sessionId);
-    if (timer) {
-      clearInterval(timer);
-      this.processingTimers.delete(sessionId);
-    }
-  }
-
-  /**
-   * Drain the audio buffer and run it through the processing pipeline.
-   */
-  private async flushAndProcess(sessionId: string): Promise<void> {
-    const session = this.sessionManager.getSession(sessionId);
-    if (!session) return;
-
-    const audioBuffer = this.sessionManager.drainAudioBuffer(sessionId);
-    if (!audioBuffer || audioBuffer.length === 0) return;
-
+    // Process audio immediately
     const result = await this.audioPipeline.processAudio(
       sessionId,
       audioBuffer,
@@ -293,7 +248,6 @@ export class WebSocketGateway {
       session.targetLanguage
     );
 
-    // Send progressive results back to the client
     if (session.websocket.readyState !== session.websocket.OPEN) return;
 
     // Send transcript
@@ -317,10 +271,11 @@ export class WebSocketGateway {
       } satisfies TranslationMessage);
     }
 
-    // Send synthesized audio as binary
+    // Send synthesized audio as Opus-encoded binary
     if (result.tts?.audioBuffer) {
-      session.websocket.send(result.tts.audioBuffer, { binary: true });
-      metrics.increment("audio.bytes_sent", result.tts.audioBuffer.length);
+      const opusAudio = encodeOpus(result.tts.audioBuffer, result.tts.sampleRate);
+      session.websocket.send(opusAudio, { binary: true });
+      metrics.increment("audio.bytes_sent", opusAudio.length);
     }
   }
 
@@ -328,7 +283,6 @@ export class WebSocketGateway {
    * Handle a client disconnect.
    */
   private async handleDisconnect(sessionId: string): Promise<void> {
-    this.stopProcessing(sessionId);
     await this.sessionManager.destroySession(sessionId, "client_disconnect");
 
     metrics.decrement("connections.active");
