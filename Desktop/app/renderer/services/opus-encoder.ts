@@ -1,11 +1,12 @@
 /**
  * Opus encoding utility using the WebCodecs AudioEncoder API.
  *
- * Encodes Float32Array PCM audio (16kHz mono) into a binary message
+ * Encodes Float32Array PCM audio into a binary message
  * containing length-prefixed Opus frames for WebSocket transfer.
  *
  * Binary format:
  *   [4 bytes] magic: "OPUS"
+ *   [2 bytes] sample rate / 100 (uint16 LE) — e.g. 160 = 16000 Hz
  *   [2 bytes] frame count (uint16 LE)
  *   For each frame:
  *     [2 bytes] frame size (uint16 LE)
@@ -48,16 +49,16 @@ export async function encodeOpus(pcmFloat32: Float32Array, sampleRate = 16000): 
   encoder.close();
   audioData.close();
 
-  return packOpusFrames(chunks);
+  return packOpusFrames(chunks, sampleRate);
 }
 
 /**
  * Pack multiple Opus frames into a single binary blob with our framing format.
  */
-function packOpusFrames(frames: ArrayBuffer[]): ArrayBuffer {
-  // Calculate total size: 4 (magic) + 2 (count) + sum(2 + frame.byteLength)
+function packOpusFrames(frames: ArrayBuffer[], sampleRate: number): ArrayBuffer {
+  // 4 (magic) + 2 (sampleRate) + 2 (count) + sum(2 + frame.byteLength)
   const totalSize =
-    4 + 2 + frames.reduce((sum, f) => sum + 2 + f.byteLength, 0);
+    4 + 2 + 2 + frames.reduce((sum, f) => sum + 2 + f.byteLength, 0);
 
   const buffer = new ArrayBuffer(totalSize);
   const view = new DataView(buffer);
@@ -69,6 +70,10 @@ function packOpusFrames(frames: ArrayBuffer[]): ArrayBuffer {
   bytes[offset++] = 0x50; // P
   bytes[offset++] = 0x55; // U
   bytes[offset++] = 0x53; // S
+
+  // Sample rate (divided by 100 to fit uint16)
+  view.setUint16(offset, sampleRate / 100, true);
+  offset += 2;
 
   // Frame count
   view.setUint16(offset, frames.length, true);

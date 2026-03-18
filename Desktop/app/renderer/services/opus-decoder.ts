@@ -8,6 +8,7 @@
  *
  * Binary format (input):
  *   [4 bytes] magic: "OPUS"
+ *   [2 bytes] sample rate / 100 (uint16 LE) — e.g. 240 = 24000 Hz
  *   [2 bytes] frame count (uint16 LE)
  *   For each frame:
  *     [2 bytes] frame size (uint16 LE)
@@ -20,19 +21,31 @@ const OPUS_MAGIC = [0x4f, 0x50, 0x55, 0x53]; // "OPUS"
  * Check if a binary message is Opus-encoded (starts with "OPUS" magic).
  */
 export function isOpusEncoded(data: ArrayBuffer): boolean {
-  if (data.byteLength < 6) return false;
+  if (data.byteLength < 8) return false;
   const view = new Uint8Array(data, 0, 4);
   return view[0] === OPUS_MAGIC[0] && view[1] === OPUS_MAGIC[1] &&
          view[2] === OPUS_MAGIC[2] && view[3] === OPUS_MAGIC[3];
 }
 
 /**
- * Decode an Opus-framed binary message into a Float32Array of PCM samples.
+ * Parse the sample rate from an Opus-framed binary message.
  */
-export async function decodeOpus(data: ArrayBuffer, sampleRate = 16000): Promise<Float32Array> {
+export function parseSampleRate(data: ArrayBuffer): number {
   const view = new DataView(data);
-  const frameCount = view.getUint16(4, true);
-  let offset = 6;
+  return view.getUint16(4, true) * 100;
+}
+
+/**
+ * Decode an Opus-framed binary message into a Float32Array of PCM samples.
+ * Sample rate is read from the header automatically.
+ */
+export async function decodeOpus(data: ArrayBuffer): Promise<{ audio: Float32Array; sampleRate: number }> {
+  const view = new DataView(data);
+
+  // Read sample rate and frame count from header
+  const sampleRate = view.getUint16(4, true) * 100;
+  const frameCount = view.getUint16(6, true);
+  let offset = 8;
 
   // Unpack frames
   const frames: ArrayBuffer[] = [];
@@ -66,6 +79,7 @@ export async function decodeOpus(data: ArrayBuffer, sampleRate = 16000): Promise
 
   // Feed each Opus frame as an EncodedAudioChunk
   let timestamp = 0;
+  const frameDurationUs = 20_000; // 20ms = 20000µs (Opus default)
   for (const frame of frames) {
     const chunk = new EncodedAudioChunk({
       type: 'key',
@@ -73,8 +87,7 @@ export async function decodeOpus(data: ArrayBuffer, sampleRate = 16000): Promise
       data: frame,
     });
     decoder.decode(chunk);
-    // Advance timestamp by frame duration (Opus default = 20ms = 20000µs)
-    timestamp += 20000;
+    timestamp += frameDurationUs;
   }
 
   await decoder.flush();
@@ -89,5 +102,5 @@ export async function decodeOpus(data: ArrayBuffer, sampleRate = 16000): Promise
     mergeOffset += chunk.length;
   }
 
-  return merged;
+  return { audio: merged, sampleRate };
 }

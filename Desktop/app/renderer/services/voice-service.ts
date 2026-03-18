@@ -239,9 +239,8 @@ class VoiceService {
     try {
       const arrayBuffer = await blob.arrayBuffer();
       if (isOpusEncoded(arrayBuffer)) {
-        const pcmAudio = await decodeOpus(arrayBuffer);
-        const sampleRate = 24000;
-        this.audioHandlers.forEach((h) => h(pcmAudio, sampleRate));
+        const { audio, sampleRate } = await decodeOpus(arrayBuffer);
+        this.audioHandlers.forEach((h) => h(audio, sampleRate));
       } else {
         console.warn('[VoiceService] Received unknown binary message');
       }
