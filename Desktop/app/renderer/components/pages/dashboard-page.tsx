@@ -45,7 +45,7 @@ export function DashboardPage() {
   showTranscriptRef.current = showTranscript;
 
   // Listen refs (outputMic → speaker)
-  const listenCtxRef = useRef<AudioContext | null>(null);
+  const listenAudioRef = useRef<HTMLAudioElement | null>(null);
   const listenStreamRef = useRef<MediaStream | null>(null);
 
   // ── 1. Onboard: connect/disconnect ────────────────────────────────────────
@@ -110,13 +110,14 @@ export function DashboardPage() {
   // ── 2. Listen: stream outputMic → speaker ─────────────────────────────────
 
   const stopListening = useCallback(() => {
+    if (listenAudioRef.current) {
+      listenAudioRef.current.pause();
+      listenAudioRef.current.srcObject = null;
+      listenAudioRef.current = null;
+    }
     if (listenStreamRef.current) {
       listenStreamRef.current.getTracks().forEach((t) => t.stop());
       listenStreamRef.current = null;
-    }
-    if (listenCtxRef.current) {
-      listenCtxRef.current.close().catch(() => {});
-      listenCtxRef.current = null;
     }
     setListening(false);
   }, []);
@@ -127,22 +128,27 @@ export function DashboardPage() {
     try {
       // Capture audio from the output mic (virtual cable)
       const stream = await navigator.mediaDevices.getUserMedia({
-        audio: { deviceId: { exact: outputMicId } },
+        audio: {
+          deviceId: { exact: outputMicId },
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: false,
+        },
       });
       listenStreamRef.current = stream;
 
-      // Create context and route to the speaker
-      const ctx = new AudioContext();
-      await ctx.resume();
+      // Use HTMLAudioElement for reliable setSinkId support in Electron
+      const audio = new Audio();
+      audio.srcObject = stream;
 
-      if (typeof (ctx as any).setSinkId === 'function' && speakerId) {
+      // Route to the selected speaker
+      if (typeof audio.setSinkId === 'function' && speakerId) {
         const sinkId = speakerId === 'default' ? '' : speakerId;
-        await (ctx as any).setSinkId(sinkId);
+        await audio.setSinkId(sinkId);
       }
 
-      listenCtxRef.current = ctx;
-      const source = ctx.createMediaStreamSource(stream);
-      source.connect(ctx.destination);
+      await audio.play();
+      listenAudioRef.current = audio;
 
       setListening(true);
     } catch (err) {
@@ -219,15 +225,27 @@ export function DashboardPage() {
   // ── Helpers ───────────────────────────────────────────────────────────────
 
   /** Play TTS audio received from the server through the output mic. */
-  function playTtsToOutputMic(audio: Float32Array, sampleRate: number) {
+  async function playTtsToOutputMic(audio: Float32Array, sampleRate: number) {
     const ctx = new AudioContext({ sampleRate });
 
-    // Route to the output mic (virtual cable)
+    // Route to the output mic (virtual cable).
+    // `outputMicId` is an audioinput device; setSinkId needs an audiooutput device.
+    // We resolve the matching audiooutput via groupId (same virtual cable adapter).
     if (typeof (ctx as any).setSinkId === 'function' && outputMicId) {
-      const sinkId = outputMicId === 'default' ? '' : outputMicId;
-      (ctx as any).setSinkId(sinkId).catch((err: Error) => {
+      try {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const inputDev = devices.find((d) => d.kind === 'audioinput' && d.deviceId === outputMicId);
+        if (inputDev) {
+          const outputDev = devices.find((d) => d.kind === 'audiooutput' && d.groupId === inputDev.groupId);
+          if (outputDev) {
+            await (ctx as any).setSinkId(outputDev.deviceId);
+          } else {
+            console.warn('[Dashboard] No matching audiooutput device found for output mic');
+          }
+        }
+      } catch (err) {
         console.warn('[Dashboard] Failed to route TTS to output mic:', err);
-      });
+      }
     }
 
     const buffer = ctx.createBuffer(1, audio.length, sampleRate);
@@ -370,70 +388,70 @@ export function DashboardPage() {
         </div>
       </div>
 
-    {/* ─── Toggle Controls ──────────────────────────────────────────── */}
-    <div className="flex gap-3 max-w-lg mt-4 animate-fade-in">
+      {/* ─── Toggle Controls ──────────────────────────────────────────── */}
+      <div className="flex gap-3 max-w-lg mt-4 animate-fade-in">
 
-      {/* Listen toggle — stream outputMic → speaker */}
-      {outputMicId && speakerId && (
-        <div className="flex-1 flex items-center justify-between rounded-lg bg-card/60 border border-border/30 px-4 py-3 backdrop-blur-sm">
+        {/* Listen toggle — stream outputMic → speaker */}
+        {outputMicId && speakerId && (
+          <div className="w-fit flex items-center gap-6 rounded-lg bg-card/60 border border-border/30 px-4 py-3 backdrop-blur-sm">
+            <div className="flex items-center gap-2.5">
+              <Volume2 className={cn('h-4 w-4', listening ? 'text-primary' : 'text-muted-foreground')} />
+              <div>
+                <span className="text-xs font-medium">Listen</span>
+                <p className="text-[10px] text-muted-foreground">Listen to translated output</p>
+              </div>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={listening}
+              onClick={toggleListening}
+              className={cn(
+                'relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50',
+                listening ? 'bg-primary' : 'bg-muted',
+              )}
+            >
+              <span
+                className={cn(
+                  'pointer-events-none block h-4 w-4 rounded-full bg-white shadow-sm transition-transform duration-200',
+                  listening ? 'translate-x-[18px]' : 'translate-x-0.5',
+                )}
+              />
+            </button>
+          </div>
+        )}
+
+        {/* Transcript toggle — show/hide transcript & translation */}
+        <div className="w-fit flex items-center gap-6 rounded-lg bg-card/60 border border-border/30 px-4 py-3 backdrop-blur-sm">
           <div className="flex items-center gap-2.5">
-            <Volume2 className={cn('h-4 w-4', listening ? 'text-primary' : 'text-muted-foreground')} />
+            <MessageSquare className={cn('h-4 w-4', showTranscript ? 'text-primary' : 'text-muted-foreground')} />
             <div>
-              <span className="text-xs font-medium">Listen</span>
-              <p className="text-[10px] text-muted-foreground">Listen to translated output</p>
+              <span className="text-xs font-medium">View Text</span>
+              <p className="text-[10px] text-muted-foreground">View transcript - translated text</p>
             </div>
           </div>
           <button
             type="button"
             role="switch"
-            aria-checked={listening}
-            onClick={toggleListening}
+            aria-checked={showTranscript}
+            onClick={() => setShowTranscript(!showTranscript)}
             className={cn(
               'relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50',
-              listening ? 'bg-primary' : 'bg-muted',
+              showTranscript ? 'bg-primary' : 'bg-muted',
             )}
           >
             <span
               className={cn(
                 'pointer-events-none block h-4 w-4 rounded-full bg-white shadow-sm transition-transform duration-200',
-                listening ? 'translate-x-[18px]' : 'translate-x-0.5',
+                showTranscript ? 'translate-x-[18px]' : 'translate-x-0.5',
               )}
             />
           </button>
         </div>
-      )}
 
-      {/* Transcript toggle — show/hide transcript & translation */}
-      <div className="flex-1 flex items-center justify-between rounded-lg bg-card/60 border border-border/30 px-4 py-3 backdrop-blur-sm">
-        <div className="flex items-center gap-2.5">
-          <MessageSquare className={cn('h-4 w-4', showTranscript ? 'text-primary' : 'text-muted-foreground')} />
-          <div>
-            <span className="text-xs font-medium">View Text</span>
-            <p className="text-[10px] text-muted-foreground">View transcript - translated text</p>
-          </div>
-        </div>
-        <button
-          type="button"
-          role="switch"
-          aria-checked={showTranscript}
-          onClick={() => setShowTranscript(!showTranscript)}
-          className={cn(
-            'relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50',
-            showTranscript ? 'bg-primary' : 'bg-muted',
-          )}
-        >
-          <span
-            className={cn(
-              'pointer-events-none block h-4 w-4 rounded-full bg-white shadow-sm transition-transform duration-200',
-              showTranscript ? 'translate-x-[18px]' : 'translate-x-0.5',
-            )}
-          />
-        </button>
       </div>
 
-    </div>
-
-    {/* ─── Transcript & Translation Block ─────────────────────────── */}
+      {/* ─── Transcript & Translation Block ─────────────────────────── */}
       <div className="w-1/2 mt-4 animate-fade-in">
         <div className="rounded-lg bg-card/60 border border-border/30 backdrop-blur-sm overflow-hidden">
           <div className="flex items-center justify-between px-4 py-2.5 border-b border-border/30">

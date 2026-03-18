@@ -41,7 +41,7 @@ export async function encodeOpus(pcmFloat32: Float32Array, sampleRate = 16000): 
     numberOfFrames: pcmFloat32.length,
     numberOfChannels: 1,
     timestamp: 0,
-    data: pcmFloat32,
+    data: new Float32Array(pcmFloat32) as Float32Array<ArrayBuffer>,
   });
 
   encoder.encode(audioData);

@@ -182,6 +182,7 @@ class VoiceService {
     this.ws.onclose = (event) => {
       console.log('[VoiceService] Disconnected:', event.code, event.reason);
       this.ws = null;
+      this.stopAudioStream();
 
       if (event.code === 4401) {
         console.error('[VoiceService] Authentication failed');

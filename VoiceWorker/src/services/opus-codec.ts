@@ -25,44 +25,47 @@ const FRAME_DURATION_MS = 20;
 /**
  * Check if a binary buffer starts with the OPUS magic header.
  */
-export function isOpusEncoded(data: Buffer): boolean {
-  return data.length >= 8 && data.subarray(0, 4).equals(OPUS_MAGIC);
+export function isOpusEncoded(data: Buffer | Uint8Array): boolean {
+  const buf = Buffer.isBuffer(data) ? data : Buffer.from(data);
+  return buf.length >= 8 && buf.subarray(0, 4).equals(OPUS_MAGIC);
 }
 
 /**
  * Parse the sample rate from an Opus-framed binary message.
  */
-export function parseSampleRate(data: Buffer): number {
-  return data.readUInt16LE(4) * 100;
+export function parseSampleRate(data: Buffer | Uint8Array): number {
+  const buf = Buffer.isBuffer(data) ? data : Buffer.from(data);
+  return buf.readUInt16LE(4) * 100;
 }
 
 /**
  * Decode an Opus-framed binary message back to PCM Int16 audio.
  * Returns a Buffer containing interleaved Int16 PCM samples.
  */
-export function decodeOpus(data: Buffer): Buffer {
-  const sampleRate = data.readUInt16LE(4) * 100;
-  const frameCount = data.readUInt16LE(6);
+export function decodeOpus(data: Buffer | Uint8Array): Buffer {
+  const buf = Buffer.isBuffer(data) ? data : Buffer.from(data);
+  const sampleRate = buf.readUInt16LE(4) * 100;
+  const frameCount = buf.readUInt16LE(6);
   let offset = 8;
 
   const dec = new OpusScript(sampleRate as any, CHANNELS, OpusScript.Application.VOIP);
   const pcmChunks: Buffer[] = [];
 
   for (let i = 0; i < frameCount; i++) {
-    if (offset + 2 > data.length) {
+    if (offset + 2 > buf.length) {
       log.warn({ frame: i, frameCount }, "Truncated Opus frame header");
       break;
     }
 
-    const frameSize = data.readUInt16LE(offset);
+    const frameSize = buf.readUInt16LE(offset);
     offset += 2;
 
-    if (offset + frameSize > data.length) {
-      log.warn({ frame: i, frameSize, remaining: data.length - offset }, "Truncated Opus frame data");
+    if (offset + frameSize > buf.length) {
+      log.warn({ frame: i, frameSize, remaining: buf.length - offset }, "Truncated Opus frame data");
       break;
     }
 
-    const frameData = data.subarray(offset, offset + frameSize);
+    const frameData = buf.subarray(offset, offset + frameSize);
     offset += frameSize;
 
     try {
@@ -81,11 +84,12 @@ export function decodeOpus(data: Buffer): Buffer {
  * Input: Buffer of interleaved Int16 PCM samples.
  * Output: Buffer with OPUS magic + sample rate + length-prefixed Opus frames.
  */
-export function encodeOpus(pcmInt16: Buffer, sampleRate: number): Buffer {
+export function encodeOpus(pcmInt16: Buffer | Uint8Array, sampleRate: number): Buffer {
+  const pcm = Buffer.isBuffer(pcmInt16) ? pcmInt16 : Buffer.from(pcmInt16);
   const enc = new OpusScript(sampleRate as any, CHANNELS, OpusScript.Application.VOIP);
   const frameSamples = (sampleRate * FRAME_DURATION_MS) / 1000;
   const frameSizeBytes = frameSamples * 2 * CHANNELS; // 2 bytes per Int16 sample
-  const totalSamples = pcmInt16.length / 2;
+  const totalSamples = pcm.length / 2;
   const frameCount = Math.ceil(totalSamples / frameSamples);
 
   const encodedFrames: Buffer[] = [];
@@ -94,12 +98,12 @@ export function encodeOpus(pcmInt16: Buffer, sampleRate: number): Buffer {
     const start = i * frameSizeBytes;
     let frameBuffer: Buffer;
 
-    if (start + frameSizeBytes <= pcmInt16.length) {
-      frameBuffer = pcmInt16.subarray(start, start + frameSizeBytes);
+    if (start + frameSizeBytes <= pcm.length) {
+      frameBuffer = pcm.subarray(start, start + frameSizeBytes);
     } else {
       // Pad the last frame with silence if not a full frame
       frameBuffer = Buffer.alloc(frameSizeBytes);
-      pcmInt16.copy(frameBuffer, 0, start);
+      pcm.copy(frameBuffer, 0, start);
     }
 
     try {

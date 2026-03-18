@@ -24,7 +24,7 @@ export function isOpusEncoded(data: ArrayBuffer): boolean {
   if (data.byteLength < 8) return false;
   const view = new Uint8Array(data, 0, 4);
   return view[0] === OPUS_MAGIC[0] && view[1] === OPUS_MAGIC[1] &&
-         view[2] === OPUS_MAGIC[2] && view[3] === OPUS_MAGIC[3];
+    view[2] === OPUS_MAGIC[2] && view[3] === OPUS_MAGIC[3];
 }
 
 /**
@@ -60,9 +60,12 @@ export async function decodeOpus(data: ArrayBuffer): Promise<{ audio: Float32Arr
 
   // Decode via WebCodecs AudioDecoder
   const pcmChunks: Float32Array[] = [];
+  let decodedSampleRate = sampleRate; // will be overridden by actual decoder output
 
   const decoder = new AudioDecoder({
     output: (audioData: AudioData) => {
+      // Opus internally operates at 48kHz — use the actual output sample rate
+      decodedSampleRate = audioData.sampleRate;
       const samples = new Float32Array(audioData.numberOfFrames * audioData.numberOfChannels);
       audioData.copyTo(samples, { planeIndex: 0 });
       pcmChunks.push(samples);
@@ -102,5 +105,5 @@ export async function decodeOpus(data: ArrayBuffer): Promise<{ audio: Float32Arr
     mergeOffset += chunk.length;
   }
 
-  return { audio: merged, sampleRate };
+  return { audio: merged, sampleRate: decodedSampleRate };
 }

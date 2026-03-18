@@ -12,7 +12,7 @@ export class GoogleTranslatorProvider implements TranslatorProvider {
 
   constructor() {
     const projectId = process.env.GOOGLE_PROJECT_ID;
-    const projectLocation = process.env.GOOGLE_PROJECT_LOCATION;
+    const projectLocation = "global";
 
     if (!projectId) {
       throw new Error("GOOGLE_PROJECT_ID environment variable is required for Google Translator");
