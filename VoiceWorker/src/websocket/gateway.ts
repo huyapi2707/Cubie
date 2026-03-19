@@ -4,7 +4,7 @@ import { config } from "../config/index.js";
 import { createChildLogger, metrics } from "../utils/index.js";
 import { SessionManager } from "../sessions/session-manager.js";
 import { AudioPipelineService } from "../services/audio-pipeline.js";
-import { isOpusEncoded, decodeOpus, encodeOpus } from "../services/opus-codec.js";
+import { isOpusEncoded, decodeOpus, encodeOpus, parseSampleRate } from "../services/opus-codec.js";
 import {
   ClientMessageSchema,
   type ServerMessage,
@@ -236,10 +236,12 @@ export class WebSocketGateway {
 
     // Decode Opus if the message has the OPUS magic header
     let audioBuffer: Buffer;
+    let sampleRate: number | undefined;
     if (isOpusEncoded(data)) {
+      sampleRate = parseSampleRate(data);
       audioBuffer = decodeOpus(data);
       _sessionLog.debug(
-        { opusBytes: data.length, pcmBytes: audioBuffer.length },
+        { opusBytes: data.length, pcmBytes: audioBuffer.length, sampleRate },
         "Decoded Opus audio"
       );
     } else {
@@ -252,7 +254,8 @@ export class WebSocketGateway {
       audioBuffer,
       session.sourceLanguage,
       session.targetLanguage,
-      session.ttsGender
+      session.ttsGender,
+      sampleRate
     );
 
     if (session.websocket.readyState !== session.websocket.OPEN) return;

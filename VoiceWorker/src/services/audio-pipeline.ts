@@ -25,13 +25,14 @@ export class AudioPipelineService {
   async speechToText(
     sessionId: string,
     audioBuffer: Buffer,
-    language: string
+    language: string,
+    sampleRate?: number
   ): Promise<SttResult | null> {
     try {
       const result = await this.workerPool.submitTask({
         type: "stt",
         sessionId,
-        data: { audioBuffer, language },
+        data: { audioBuffer, language, sampleRate },
       });
 
       if (!result.success) {
@@ -132,7 +133,8 @@ export class AudioPipelineService {
     audioBuffer: Buffer,
     sourceLanguage: string,
     targetLanguage: string,
-    ttsGender: string = "neutral"
+    ttsGender: string = "neutral",
+    sampleRate?: number
   ): Promise<PipelineResult> {
     const startTime = Date.now();
 
@@ -147,7 +149,8 @@ export class AudioPipelineService {
     const sttResult = await this.speechToText(
       sessionId,
       audioBuffer,
-      sourceLanguage
+      sourceLanguage,
+      sampleRate
     );
 
     if (!sttResult || !sttResult.text) {
