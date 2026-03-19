@@ -98,13 +98,14 @@ export class AudioPipelineService {
   async textToSpeech(
     sessionId: string,
     text: string,
-    language: string
+    language: string,
+    gender: string = "neutral"
   ): Promise<TtsResult | null> {
     try {
       const result = await this.workerPool.submitTask({
         type: "tts",
         sessionId,
-        data: { text, language },
+        data: { text, language, gender },
       });
 
       if (!result.success) {
@@ -130,7 +131,8 @@ export class AudioPipelineService {
     sessionId: string,
     audioBuffer: Buffer,
     sourceLanguage: string,
-    targetLanguage: string
+    targetLanguage: string,
+    ttsGender: string = "neutral"
   ): Promise<PipelineResult> {
     const startTime = Date.now();
 
@@ -174,7 +176,8 @@ export class AudioPipelineService {
     const ttsResult = await this.textToSpeech(
       sessionId,
       translateResult.text,
-      targetLanguage
+      targetLanguage,
+      ttsGender
     );
 
     if (ttsResult) {

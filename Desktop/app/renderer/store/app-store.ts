@@ -47,6 +47,10 @@ interface AppState {
   targetLanguage: string;
   setLanguages: (source: string, target: string) => void;
 
+  // TTS Gender
+  ttsGender: 'male' | 'female' | 'neutral';
+  setTtsGender: (gender: 'male' | 'female' | 'neutral') => void;
+
   // Auto Reconnect
   autoReconnect: boolean;
   setAutoReconnect: (enabled: boolean) => void;
@@ -133,6 +137,13 @@ export const useAppStore = create<AppState>((set, get) => ({
     persistSettings({ sourceLanguage: source, targetLanguage: target });
   },
 
+  // TTS Gender
+  ttsGender: 'neutral',
+  setTtsGender: (gender) => {
+    set({ ttsGender: gender });
+    persistSettings({ ttsGender: gender });
+  },
+
   // Auto Reconnect
   autoReconnect: true,
   setAutoReconnect: (enabled) => {
@@ -166,6 +177,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         patch.sourceLanguage = settings.sourceLanguage || voiceConfig?.defaultSourceLanguage || '';
         patch.targetLanguage = settings.targetLanguage || voiceConfig?.defaultTargetLanguage || '';
         patch.autoReconnect = settings.autoReconnect ?? true;
+        patch.ttsGender = settings.ttsGender || 'neutral';
       }
 
       set(patch as Partial<AppState>);

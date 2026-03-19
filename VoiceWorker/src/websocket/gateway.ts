@@ -143,6 +143,7 @@ export class WebSocketGateway {
           {
             sourceLanguage: message.sourceLanguage,
             targetLanguage: message.targetLanguage,
+            ttsGender: message.ttsGender,
           },
           "Starting stream"
         );
@@ -150,6 +151,7 @@ export class WebSocketGateway {
         void this.sessionManager.updateSession(sessionId, {
           sourceLanguage: message.sourceLanguage,
           targetLanguage: message.targetLanguage,
+          ttsGender: message.ttsGender ?? "neutral",
           isStreaming: true,
         });
         break;
@@ -180,6 +182,7 @@ export class WebSocketGateway {
           {
             sourceLanguage: message.sourceLanguage,
             targetLanguage: message.targetLanguage,
+            ttsGender: message.ttsGender,
           },
           "Updating config"
         );
@@ -190,6 +193,9 @@ export class WebSocketGateway {
           }),
           ...(message.targetLanguage && {
             targetLanguage: message.targetLanguage,
+          }),
+          ...(message.ttsGender && {
+            ttsGender: message.ttsGender,
           }),
         });
         break;
@@ -245,7 +251,8 @@ export class WebSocketGateway {
       sessionId,
       audioBuffer,
       session.sourceLanguage,
-      session.targetLanguage
+      session.targetLanguage,
+      session.ttsGender
     );
 
     if (session.websocket.readyState !== session.websocket.OPEN) return;

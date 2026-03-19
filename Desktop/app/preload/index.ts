@@ -47,6 +47,7 @@ interface UserSettings {
   sourceLanguage: string;
   targetLanguage: string;
   autoReconnect: boolean;
+  ttsGender: 'male' | 'female' | 'neutral';
 }
 
 // ─── API Bridge ────────────────────────────────────────────────────

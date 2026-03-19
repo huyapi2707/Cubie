@@ -14,6 +14,7 @@ const DEFAULTS: UserSettings = {
   sourceLanguage: 'en',
   targetLanguage: 'vi',
   autoReconnect: true,
+  ttsGender: 'neutral',
 };
 
 const schema = {
@@ -27,6 +28,7 @@ const schema = {
   sourceLanguage: { type: 'string' as const, default: 'en' },
   targetLanguage: { type: 'string' as const, default: 'vi' },
   autoReconnect: { type: 'boolean' as const, default: true },
+  ttsGender: { type: 'string' as const, enum: ['male', 'female', 'neutral'], default: 'neutral' },
 };
 
 // ─── Singleton Instance ────────────────────────────────────────────
@@ -51,6 +53,7 @@ export function getSettings(): UserSettings {
     sourceLanguage: store.get('sourceLanguage'),
     targetLanguage: store.get('targetLanguage'),
     autoReconnect: store.get('autoReconnect'),
+    ttsGender: store.get('ttsGender') as 'male' | 'female' | 'neutral',
   };
 }
 

@@ -24,6 +24,7 @@ export interface TtsPayload {
   text: string;
   language: string;
   voice?: string;
+  gender?: string;
 }
 
 /** Result returned from a worker task */

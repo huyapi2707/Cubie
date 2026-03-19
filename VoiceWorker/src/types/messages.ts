@@ -6,6 +6,7 @@ export const StartMessageSchema = z.object({
   type: z.literal("start"),
   sourceLanguage: z.string().min(2).max(10),
   targetLanguage: z.string().min(2).max(10),
+  ttsGender: z.enum(["male", "female", "neutral"]).optional(),
 });
 
 export const StopMessageSchema = z.object({
@@ -20,6 +21,7 @@ export const ConfigUpdateMessageSchema = z.object({
   type: z.literal("config"),
   sourceLanguage: z.string().min(2).max(10).optional(),
   targetLanguage: z.string().min(2).max(10).optional(),
+  ttsGender: z.enum(["male", "female", "neutral"]).optional(),
 });
 
 export const ClientMessageSchema = z.discriminatedUnion("type", [

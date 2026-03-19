@@ -1,9 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
+import { deviceService, type AudioDevice } from '@/services/device-service';
 
-export interface AudioDevice {
-  deviceId: string;
-  label: string;
-}
+export type { AudioDevice };
 
 /**
  * Hook to enumerate audio input (microphone) and output (speaker) devices.
@@ -19,28 +17,7 @@ export function useAudioDevices() {
     setLoading(true);
     setError(null);
     try {
-      // Request permission first so we get device labels (not just IDs)
-      await navigator.mediaDevices.getUserMedia({ audio: true }).then((stream) => {
-        // Stop the stream immediately — we only needed it for permission
-        stream.getTracks().forEach((track) => track.stop());
-      });
-
-      const allDevices = await navigator.mediaDevices.enumerateDevices();
-
-      const inputs = allDevices
-        .filter((d) => d.kind === 'audioinput')
-        .map((d) => ({
-          deviceId: d.deviceId,
-          label: d.label || `Microphone (${d.deviceId.slice(0, 8)}...)`,
-        }));
-
-      const outputs = allDevices
-        .filter((d) => d.kind === 'audiooutput')
-        .map((d) => ({
-          deviceId: d.deviceId,
-          label: d.label || `Speaker (${d.deviceId.slice(0, 8)}...)`,
-        }));
-
+      const { inputs, outputs } = await deviceService.enumerate();
       setInputDevices(inputs);
       setOutputDevices(outputs);
     } catch (err) {

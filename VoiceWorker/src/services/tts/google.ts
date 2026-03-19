@@ -15,10 +15,18 @@ export class GoogleTTSProvider implements TTSProvider {
   }
 
   async synthesize(payload: TtsPayload): Promise<TtsResult> {
-    const { text, language, voice } = payload;
+    const { text, language, voice, gender } = payload;
+
+    // Map gender string to Google TTS ssmlGender enum
+    const ssmlGenderMap: Record<string, "MALE" | "FEMALE" | "NEUTRAL"> = {
+      male: "MALE",
+      female: "FEMALE",
+      neutral: "NEUTRAL",
+    };
+    const ssmlGender = ssmlGenderMap[gender ?? "neutral"] ?? "NEUTRAL";
 
     log.debug(
-      { language, voice, textLength: text.length },
+      { language, voice, gender: ssmlGender, textLength: text.length },
       "Synthesizing speech with Google TTS"
     );
 
@@ -27,6 +35,7 @@ export class GoogleTTSProvider implements TTSProvider {
       voice: {
         languageCode: language,
         name: voice ?? undefined,
+        ssmlGender,
       },
       audioConfig: {
         audioEncoding: "LINEAR16",

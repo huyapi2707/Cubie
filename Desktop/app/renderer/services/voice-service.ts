@@ -1,8 +1,10 @@
 import type { VoiceConfig } from '@shared/ipc';
 import { useAppStore } from '@/store';
-import * as vad from '@ricky0123/vad-web';
-import { encodeOpus } from './opus-encoder';
-import { isOpusEncoded, decodeOpus } from './opus-decoder';
+import { encodeOpus, isOpusEncoded, decodeOpus } from './opus-codec';
+import { deviceService } from './device-service';
+import { VoicePipeline } from './voice-pipeline';
+import { SOURCE_SAMPLE_RATE, SILENCE_THRESHOLD } from '@/constants/audio';
+import { calculateRms } from '@/lib/utils';
 
 // ─── Types ──────────────────────────────────────────────────────────
 
@@ -40,8 +42,8 @@ class VoiceService {
   private sessionId: string | null = null;
   private lastErrors: string[] = [];
 
-  // Audio streaming (MicVAD)
-  private micVad: InstanceType<typeof vad.MicVAD> | null = null;
+  // Audio pipeline (48kHz: Mic → RNNoise → VAD → Opus → WS)
+  private pipeline: VoicePipeline | null = null;
 
   private messageHandlers: Set<MessageHandler> = new Set();
   private statusHandlers: Set<StatusHandler> = new Set();
@@ -222,6 +224,7 @@ class VoiceService {
           type: 'start',
           sourceLanguage: state.sourceLanguage || this.config!.defaultSourceLanguage,
           targetLanguage: state.targetLanguage || this.config!.defaultTargetLanguage,
+          ttsGender: state.ttsGender || 'neutral',
         });
 
         // Begin streaming audio from the selected mic
@@ -288,62 +291,51 @@ class VoiceService {
     }
   }
 
-  // ─── Audio Streaming (MicVAD) ──────────────────────────────────────
+  // ─── Audio Pipeline (48kHz: Mic → RNNoise → VAD) ───────────────────
 
   private async startAudioStream(deviceId: string): Promise<void> {
     try {
-      this.micVad = await vad.MicVAD.new({
-        startOnLoad: true,
-        baseAssetPath: './',
-        onnxWASMBasePath: './',
-        getStream: () =>
-          navigator.mediaDevices.getUserMedia({
-            audio: {
-              deviceId: { exact: deviceId },
-              channelCount: 1,
-              sampleRate: 16000,
-              echoCancellation: true,
-              noiseSuppression: true,
-              autoGainControl: true,
-            },
-          }),
+      this.pipeline = new VoicePipeline({
         onSpeechStart: () => {
           console.log('[VoiceService] Speech started');
         },
         onSpeechEnd: async (audio: Float32Array) => {
-          // audio is Float32Array at 16kHz — encode with Opus and send
+          // audio is Float32Array at 48kHz — encode with Opus and send
           if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+
+          // Discard silence / too-quiet segments
+          const rms = calculateRms(audio);
+          if (rms < SILENCE_THRESHOLD) {
+            console.log(`[VoiceService] Speech discarded (RMS: ${rms.toFixed(4)})`);
+            return;
+          }
 
           try {
             const opusData = await encodeOpus(audio);
             this.ws.send(opusData);
             console.log(
-              `[VoiceService] Sent Opus utterance: ${audio.length} samples (${(audio.length / 16000).toFixed(2)}s), ${opusData.byteLength} bytes`,
+              `[VoiceService] Sent Opus utterance: ${opusData.byteLength} bytes (${(audio.length / SOURCE_SAMPLE_RATE).toFixed(2)}s)`,
             );
           } catch (err) {
             console.error('[VoiceService] Opus encoding failed, sending raw:', err);
-            // Fallback: send raw PCM
             this.ws.send(audio.buffer);
           }
         },
-        onVADMisfire: () => {
-          console.log('[VoiceService] VAD misfire (speech too short)');
-        },
       });
 
-      console.log('[VoiceService] Audio streaming started (MicVAD)');
+      await this.pipeline.start(deviceId);
+      console.log('[VoiceService] Audio pipeline started (48kHz)');
     } catch (err) {
-      console.error('[VoiceService] Failed to start audio stream:', err);
+      console.error('[VoiceService] Failed to start audio pipeline:', err);
     }
   }
 
   private stopAudioStream(): void {
-    if (this.micVad) {
-      this.micVad.destroy();
-      this.micVad = null;
+    if (this.pipeline) {
+      this.pipeline.stop();
+      this.pipeline = null;
     }
-
-    console.log('[VoiceService] Audio streaming stopped');
+    console.log('[VoiceService] Audio pipeline stopped');
   }
 
   private async validateSettings(): Promise<string[]> {
@@ -366,22 +358,15 @@ class VoiceService {
     }
 
     // If device IDs are set, verify they still exist on the system
-    if (state.selectedMicId || state.selectedOutputMicId) {
-      try {
-        const devices = await navigator.mediaDevices.enumerateDevices();
-        const audioInputIds = new Set(
-          devices.filter((d) => d.kind === 'audioinput').map((d) => d.deviceId),
-        );
-
-        if (state.selectedMicId && !audioInputIds.has(state.selectedMicId)) {
-          errors.push(`Input microphone "${state.selectedMicLabel}" is no longer available`);
-        }
-        if (state.selectedOutputMicId && !audioInputIds.has(state.selectedOutputMicId)) {
-          errors.push(`Output microphone "${state.selectedOutputMicLabel}" is no longer available`);
-        }
-      } catch {
-        errors.push('Unable to enumerate audio devices');
+    try {
+      if (state.selectedMicId && !(await deviceService.deviceExists(state.selectedMicId, 'audioinput'))) {
+        errors.push(`Input microphone "${state.selectedMicLabel}" is no longer available`);
       }
+      if (state.selectedOutputMicId && !(await deviceService.deviceExists(state.selectedOutputMicId, 'audioinput'))) {
+        errors.push(`Output microphone "${state.selectedOutputMicLabel}" is no longer available`);
+      }
+    } catch {
+      errors.push('Unable to enumerate audio devices');
     }
 
     return errors;

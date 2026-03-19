@@ -2,6 +2,10 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { Mic } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { deviceService } from '@/services';
+import { SOURCE_SAMPLE_RATE } from '@/constants/audio';
+import { NoiseSuppressorWorklet_Name } from '@timephy/rnnoise-wasm';
+import NoiseSuppressorWorkletUrl from '@timephy/rnnoise-wasm/NoiseSuppressorWorklet?worker&url';
 
 const TOTAL_BARS = 20;
 
@@ -40,17 +44,16 @@ export function MicTester({ deviceId }: { deviceId: string }) {
 
   const startTest = useCallback(async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          deviceId: { exact: deviceId },
-          echoCancellation: false,
-          noiseSuppression: false,
-          autoGainControl: false,
-        },
+      const stream = await deviceService.captureMic(deviceId, {
+        channelCount: 1,
+        sampleRate: SOURCE_SAMPLE_RATE,
+        echoCancellation: true,
+        noiseSuppression: false, // handled by RNNoise
+        autoGainControl: true,
       });
       streamRef.current = stream;
 
-      const ctx = new AudioContext({ latencyHint: 'interactive' });
+      const ctx = new AudioContext({ sampleRate: SOURCE_SAMPLE_RATE });
       audioCtxRef.current = ctx;
 
       const source = ctx.createMediaStreamSource(stream);
@@ -59,8 +62,18 @@ export function MicTester({ deviceId }: { deviceId: string }) {
       analyser.smoothingTimeConstant = 0.6;
       analyserRef.current = analyser;
 
-      source.connect(ctx.destination);
-      source.connect(analyser);
+      // Audio graph: source → RNNoise worklet → analyser + destination
+      try {
+        await ctx.audioWorklet.addModule(NoiseSuppressorWorkletUrl);
+        const rnnoiseNode = new AudioWorkletNode(ctx, NoiseSuppressorWorklet_Name);
+        source.connect(rnnoiseNode);
+        rnnoiseNode.connect(analyser);
+        rnnoiseNode.connect(ctx.destination);
+      } catch (error) {
+        console.error('[MicTester] RNNoise worklet failed:', error);
+        source.connect(analyser);
+        source.connect(ctx.destination);
+      }
 
       setTesting(true);
 

@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Zap, Loader2, Radio, Clock, Globe, Wifi, WifiOff, AlertTriangle, Volume2, MessageSquare, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { InfoCard } from '@/components/ui/info-card';
+import { InfoCard } from '@/components/functional/info-card';
 import { useAppStore } from '@/store';
-import { voiceService } from '@/services';
+import { voiceService, deviceService } from '@/services';
+import type { ListenSession } from '@/services/device-service';
 import { cn } from '@/lib/utils';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -44,9 +45,8 @@ export function DashboardPage() {
   const showTranscriptRef = useRef(showTranscript);
   showTranscriptRef.current = showTranscript;
 
-  // Listen refs (outputMic → speaker)
-  const listenAudioRef = useRef<HTMLAudioElement | null>(null);
-  const listenStreamRef = useRef<MediaStream | null>(null);
+  // Listen ref (outputMic → speaker)
+  const listenSessionRef = useRef<ListenSession | null>(null);
 
   // ── 1. Onboard: connect/disconnect ────────────────────────────────────────
 
@@ -102,7 +102,7 @@ export function DashboardPage() {
   // Stream server audio (TTS) → outputMic
   useEffect(() => {
     const unsubscribe = voiceService.onAudio((audio, sampleRate) => {
-      playTtsToOutputMic(audio, sampleRate);
+      deviceService.playPcm(audio, sampleRate, { outputMicId: outputMicId || undefined });
     });
     return unsubscribe;
   }, [outputMicId]);
@@ -110,46 +110,17 @@ export function DashboardPage() {
   // ── 2. Listen: stream outputMic → speaker ─────────────────────────────────
 
   const stopListening = useCallback(() => {
-    if (listenAudioRef.current) {
-      listenAudioRef.current.pause();
-      listenAudioRef.current.srcObject = null;
-      listenAudioRef.current = null;
-    }
-    if (listenStreamRef.current) {
-      listenStreamRef.current.getTracks().forEach((t) => t.stop());
-      listenStreamRef.current = null;
-    }
+    listenSessionRef.current?.stop();
+    listenSessionRef.current = null;
     setListening(false);
   }, []);
 
   const startListening = useCallback(async () => {
-    if (!outputMicId || listening) return;
+    if (!outputMicId || !speakerId || listening) return;
 
     try {
-      // Capture audio from the output mic (virtual cable)
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          deviceId: { exact: outputMicId },
-          echoCancellation: false,
-          noiseSuppression: false,
-          autoGainControl: false,
-        },
-      });
-      listenStreamRef.current = stream;
-
-      // Use HTMLAudioElement for reliable setSinkId support in Electron
-      const audio = new Audio();
-      audio.srcObject = stream;
-
-      // Route to the selected speaker
-      if (typeof audio.setSinkId === 'function' && speakerId) {
-        const sinkId = speakerId === 'default' ? '' : speakerId;
-        await audio.setSinkId(sinkId);
-      }
-
-      await audio.play();
-      listenAudioRef.current = audio;
-
+      const session = await deviceService.listenToMic(outputMicId, speakerId);
+      listenSessionRef.current = session;
       setListening(true);
     } catch (err) {
       console.error('[Dashboard] Failed to start listening:', err);
@@ -223,40 +194,6 @@ export function DashboardPage() {
   };
 
   // ── Helpers ───────────────────────────────────────────────────────────────
-
-  /** Play TTS audio received from the server through the output mic. */
-  async function playTtsToOutputMic(audio: Float32Array, sampleRate: number) {
-    const ctx = new AudioContext({ sampleRate });
-
-    // Route to the output mic (virtual cable).
-    // `outputMicId` is an audioinput device; setSinkId needs an audiooutput device.
-    // We resolve the matching audiooutput via groupId (same virtual cable adapter).
-    if (typeof (ctx as any).setSinkId === 'function' && outputMicId) {
-      try {
-        const devices = await navigator.mediaDevices.enumerateDevices();
-        const inputDev = devices.find((d) => d.kind === 'audioinput' && d.deviceId === outputMicId);
-        if (inputDev) {
-          const outputDev = devices.find((d) => d.kind === 'audiooutput' && d.groupId === inputDev.groupId);
-          if (outputDev) {
-            await (ctx as any).setSinkId(outputDev.deviceId);
-          } else {
-            console.warn('[Dashboard] No matching audiooutput device found for output mic');
-          }
-        }
-      } catch (err) {
-        console.warn('[Dashboard] Failed to route TTS to output mic:', err);
-      }
-    }
-
-    const buffer = ctx.createBuffer(1, audio.length, sampleRate);
-    buffer.getChannelData(0).set(audio);
-
-    const source = ctx.createBufferSource();
-    source.buffer = buffer;
-    source.connect(ctx.destination);
-    source.onended = () => ctx.close();
-    source.start();
-  }
 
   const formatTime = (s: number) => {
     const m = Math.floor(s / 60);
@@ -457,7 +394,7 @@ export function DashboardPage() {
           <div className="flex items-center justify-between px-4 py-2.5 border-b border-border/30">
             <div className="flex items-center gap-2">
               <MessageSquare className="h-3.5 w-3.5 text-muted-foreground" />
-              <span className="text-xs font-medium">Live Transcript</span>
+              <span className="text-xs font-medium">Live Transcript - Translation</span>
             </div>
             {entries.length > 0 && (
               <button

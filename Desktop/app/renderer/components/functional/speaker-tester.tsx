@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react';
 import { Volume2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { deviceService } from '@/services';
 
 export function SpeakerTester({ deviceId }: { deviceId: string }) {
   const [playing, setPlaying] = useState(false);
@@ -14,13 +15,9 @@ export function SpeakerTester({ deviceId }: { deviceId: string }) {
       const ctx = new AudioContext();
       await ctx.resume();
 
-      // Try to route to the selected speaker (non-blocking)
-      // setSinkId uses "" for default device, but enumerateDevices returns "default"
+      // Route to the selected speaker (non-blocking)
       try {
-        if (typeof (ctx as any).setSinkId === 'function') {
-          const sinkId = deviceId === 'default' ? '' : deviceId;
-          await (ctx as any).setSinkId(sinkId);
-        }
+        await deviceService.routeContextToSpeaker(ctx, deviceId);
       } catch (e) {
         console.warn('[SpeakerTester] setSinkId failed, using default output:', e);
       }

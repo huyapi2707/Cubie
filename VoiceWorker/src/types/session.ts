@@ -9,6 +9,8 @@ export interface Session {
   sourceLanguage: string;
   /** Target language code (e.g. "ja") */
   targetLanguage: string;
+  /** TTS voice gender preference */
+  ttsGender: "male" | "female" | "neutral";
   /** Whether the session is actively streaming */
   isStreaming: boolean;
   /** Session creation timestamp */
@@ -23,6 +25,7 @@ export interface SessionMetadata {
   id: string;
   sourceLanguage: string;
   targetLanguage: string;
+  ttsGender: "male" | "female" | "neutral";
   isStreaming: boolean;
   createdAt: string;
   lastActivityAt: string;

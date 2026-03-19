@@ -51,6 +51,7 @@ export class SessionManager {
       websocket: ws,
       sourceLanguage: "en",
       targetLanguage: "en",
+      ttsGender: "neutral",
       isStreaming: false,
       createdAt: now,
       lastActivityAt: now,
@@ -79,7 +80,7 @@ export class SessionManager {
    */
   async updateSession(
     sessionId: string,
-    update: Partial<Pick<Session, "sourceLanguage" | "targetLanguage" | "isStreaming">>
+    update: Partial<Pick<Session, "sourceLanguage" | "targetLanguage" | "ttsGender" | "isStreaming">>
   ): Promise<void> {
     const session = this.sessions.get(sessionId);
     if (!session) return;
@@ -170,6 +171,7 @@ export class SessionManager {
       id: session.id,
       sourceLanguage: session.sourceLanguage,
       targetLanguage: session.targetLanguage,
+      ttsGender: session.ttsGender,
       isStreaming: session.isStreaming,
       createdAt: session.createdAt.toISOString(),
       lastActivityAt: session.lastActivityAt.toISOString(),

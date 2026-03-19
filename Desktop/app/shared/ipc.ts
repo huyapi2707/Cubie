@@ -90,6 +90,7 @@ export interface UserSettings {
   sourceLanguage: string;
   targetLanguage: string;
   autoReconnect: boolean;
+  ttsGender: 'male' | 'female' | 'neutral';
 }
 
 // ─── IPC Request/Response Maps ─────────────────────────────────────
