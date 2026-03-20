@@ -7,3 +7,7 @@ release/
 .DS_Store
 Thumbs.db
 *.tsbuildinfo
+
+# Native addon build artifacts
+native/rnnoise/build/
+native/rnnoise-src/

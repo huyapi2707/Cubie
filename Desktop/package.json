@@ -14,6 +14,8 @@
     "build:renderer": "vite build",
     "build:main": "tsc -p tsconfig.main.json",
     "build:preload": "tsc -p tsconfig.preload.json",
+    "build:native": "cd native/rnnoise && npx node-gyp rebuild",
+    "rebuild:native": "npx -y @electron/rebuild --module-dir native/rnnoise",
     "package": "npm run build && electron-builder",
     "package:win": "npm run build && electron-builder --win",
     "package:mac": "npm run build && electron-builder --mac",
@@ -24,22 +26,24 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@tanstack/react-query": "^5.62.0",
-    "@timephy/rnnoise-wasm": "^1.0.0",
+    "audify": "^1.10.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "electron-store": "^8.2.0",
     "lucide-react": "^0.468.0",
+    "opusscript": "^0.1.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "tailwind-merge": "^2.6.0",
     "tailwindcss-animate": "^1.0.7",
+    "ws": "^8.19.0",
     "zustand": "^5.0.2"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
+    "@types/ws": "^8.18.1",
     "@typescript-eslint/eslint-plugin": "^8.16.0",
     "@typescript-eslint/parser": "^8.16.0",
     "@vitejs/plugin-react": "^4.3.4",
@@ -48,7 +52,6 @@
     "electron": "^33.2.0",
     "electron-builder": "^25.1.8",
     "eslint": "^9.16.0",
-    "eslint-config-prettier": "^9.1.0",
     "eslint-plugin-react": "^7.37.2",
     "eslint-plugin-react-hooks": "^5.1.0",
     "postcss": "^8.4.49",
@@ -67,7 +70,13 @@
     },
     "files": [
       "dist/**/*",
+      "native/rnnoise/build/Release/rnnoise.node",
+      "native/rnnoise/index.d.ts",
+      "native/rnnoise/package.json",
       "package.json"
+    ],
+    "asarUnpack": [
+      "**/*.node"
     ],
     "win": {
       "target": [

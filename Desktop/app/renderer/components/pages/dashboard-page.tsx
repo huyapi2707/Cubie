@@ -3,8 +3,7 @@ import { Zap, Loader2, Radio, Clock, Globe, Wifi, WifiOff, AlertTriangle, Volume
 import { Button } from '@/components/ui/button';
 import { InfoCard } from '@/components/functional/info-card';
 import { useAppStore } from '@/store';
-import { voiceService, deviceService } from '@/services';
-import type { ListenSession } from '@/services/device-service';
+import { voiceService } from '@/services';
 import { cn } from '@/lib/utils';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -45,8 +44,7 @@ export function DashboardPage() {
   const showTranscriptRef = useRef(showTranscript);
   showTranscriptRef.current = showTranscript;
 
-  // Listen ref (outputMic → speaker)
-  const listenSessionRef = useRef<ListenSession | null>(null);
+
 
   // ── 1. Onboard: connect/disconnect ────────────────────────────────────────
 
@@ -99,19 +97,18 @@ export function DashboardPage() {
     return () => clearInterval(timer);
   }, [startTime]);
 
-  // Stream server audio (TTS) → outputMic
+  // Stream server audio (TTS) → outputMic (via main process RtAudio)
   useEffect(() => {
     const unsubscribe = voiceService.onAudio((audio, sampleRate) => {
-      deviceService.playPcm(audio, sampleRate, { outputMicId: outputMicId || undefined });
+      window.electronAPI.audio.playPcm(Array.from(audio), sampleRate, Number(outputMicId) || 0);
     });
     return unsubscribe;
   }, [outputMicId]);
 
-  // ── 2. Listen: stream outputMic → speaker ─────────────────────────────────
+  // ── 2. Listen: stream outputMic → speaker (via main process) ───────────────
 
   const stopListening = useCallback(() => {
-    listenSessionRef.current?.stop();
-    listenSessionRef.current = null;
+    window.electronAPI.audio.listenStop();
     setListening(false);
   }, []);
 
@@ -119,8 +116,7 @@ export function DashboardPage() {
     if (!outputMicId || !speakerId || listening) return;
 
     try {
-      const session = await deviceService.listenToMic(outputMicId, speakerId);
-      listenSessionRef.current = session;
+      await window.electronAPI.audio.listenStart(Number(outputMicId), Number(speakerId));
       setListening(true);
     } catch (err) {
       console.error('[Dashboard] Failed to start listening:', err);

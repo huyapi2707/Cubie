@@ -2,34 +2,28 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { Mic } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { deviceService } from '@/services';
-import { SOURCE_SAMPLE_RATE } from '@/constants/audio';
-import { NoiseSuppressorWorklet_Name } from '@timephy/rnnoise-wasm';
-import NoiseSuppressorWorkletUrl from '@timephy/rnnoise-wasm/NoiseSuppressorWorklet?worker&url';
 
 const TOTAL_BARS = 20;
 
-export function MicTester({ deviceId }: { deviceId: string }) {
+/**
+ * Mic Tester — uses the main process audio pipeline (RtAudio + RNNoise)
+ * via IPC. The main process captures audio, applies noise suppression,
+ * and sends level data back to the renderer for the meter visualization.
+ *
+ * @param deviceId - The RtAudio numeric device ID
+ */
+export function MicTester({ deviceId }: { deviceId: number }) {
   const [testing, setTesting] = useState(false);
-  const audioCtxRef = useRef<AudioContext | null>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const animFrameRef = useRef<number>(0);
-  const analyserRef = useRef<AnalyserNode | null>(null);
   const barsRef = useRef<(HTMLDivElement | null)[]>([]);
   const levelRef = useRef<HTMLSpanElement | null>(null);
+  const unsubRef = useRef<(() => void) | null>(null);
 
   const stopTest = useCallback(() => {
-    if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
-    animFrameRef.current = 0;
+    window.electronAPI.audio.micTestStop();
+    unsubRef.current?.();
+    unsubRef.current = null;
 
-    streamRef.current?.getTracks().forEach((t) => t.stop());
-    streamRef.current = null;
-
-    audioCtxRef.current?.close();
-    audioCtxRef.current = null;
-    analyserRef.current = null;
-
-    // Reset bars via DOM
+    // Reset bars
     barsRef.current.forEach((bar) => {
       if (bar) {
         bar.style.height = '50%';
@@ -43,56 +37,21 @@ export function MicTester({ deviceId }: { deviceId: string }) {
   }, []);
 
   const startTest = useCallback(async () => {
+    if (!deviceId) return;
+
     try {
-      const stream = await deviceService.captureMic(deviceId, {
-        channelCount: 1,
-        sampleRate: SOURCE_SAMPLE_RATE,
-        echoCancellation: true,
-        noiseSuppression: false, // handled by RNNoise
-        autoGainControl: true,
-      });
-      streamRef.current = stream;
+      await window.electronAPI.audio.micTestStart(deviceId);
 
-      const ctx = new AudioContext({ sampleRate: SOURCE_SAMPLE_RATE });
-      audioCtxRef.current = ctx;
+      // Subscribe to level events from main process
+      const unsub = window.electronAPI.audio.onMicTestLevel(({ level }) => {
+        const activeBars = Math.round(level * TOTAL_BARS * 10); // Scale up since RMS is typically small
+        const clampedBars = Math.min(activeBars, TOTAL_BARS);
 
-      const source = ctx.createMediaStreamSource(stream);
-      const analyser = ctx.createAnalyser();
-      analyser.fftSize = 256;
-      analyser.smoothingTimeConstant = 0.6;
-      analyserRef.current = analyser;
-
-      // Audio graph: source → RNNoise worklet → analyser + destination
-      try {
-        await ctx.audioWorklet.addModule(NoiseSuppressorWorkletUrl);
-        const rnnoiseNode = new AudioWorkletNode(ctx, NoiseSuppressorWorklet_Name);
-        source.connect(rnnoiseNode);
-        rnnoiseNode.connect(analyser);
-        rnnoiseNode.connect(ctx.destination);
-      } catch (error) {
-        console.error('[MicTester] RNNoise worklet failed:', error);
-        source.connect(analyser);
-        source.connect(ctx.destination);
-      }
-
-      setTesting(true);
-
-      const dataArray = new Uint8Array(analyser.frequencyBinCount);
-
-      function poll() {
-        if (!analyserRef.current) return;
-        analyserRef.current.getByteFrequencyData(dataArray);
-
-        let sum = 0;
-        for (let i = 0; i < dataArray.length; i++) sum += dataArray[i];
-        const level = sum / dataArray.length / 255;
-
-        const activeBars = Math.round(level * TOTAL_BARS);
         for (let i = 0; i < TOTAL_BARS; i++) {
           const bar = barsRef.current[i];
           if (!bar) continue;
           const ratio = i / TOTAL_BARS;
-          const isActive = i < activeBars;
+          const isActive = i < clampedBars;
 
           if (isActive) {
             bar.style.height = '100%';
@@ -105,17 +64,18 @@ export function MicTester({ deviceId }: { deviceId: string }) {
         }
 
         if (levelRef.current) {
-          levelRef.current.textContent = `${Math.round(level * 100)}%`;
+          levelRef.current.textContent = `${Math.round(Math.min(level * 1000, 100))}%`;
         }
+      });
+      unsubRef.current = unsub;
 
-        animFrameRef.current = requestAnimationFrame(poll);
-      }
-      poll();
+      setTesting(true);
     } catch {
       stopTest();
     }
   }, [deviceId, stopTest]);
 
+  // Stop when deviceLabel changes or component unmounts
   useEffect(() => {
     return () => stopTest();
   }, [deviceId, stopTest]);

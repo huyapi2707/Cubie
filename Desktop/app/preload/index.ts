@@ -32,6 +32,20 @@ const CH = {
   SETTINGS_GET: 'settings:get',
   SETTINGS_SET: 'settings:set',
   VOICE_GET_CONFIG: 'voice:get-config',
+  VOICE_CONNECT: 'voice:connect',
+  VOICE_DISCONNECT: 'voice:disconnect',
+  VOICE_GET_STATUS: 'voice:get-status',
+  VOICE_STATUS_CHANGED: 'voice:status-changed',
+  VOICE_MESSAGE: 'voice:message',
+  VOICE_AUDIO_RECEIVED: 'voice:audio-received',
+  AUDIO_GET_DEVICES: 'audio:get-devices',
+  LISTEN_START: 'audio:listen-start',
+  LISTEN_STOP: 'audio:listen-stop',
+  MIC_TEST_START: 'audio:mic-test-start',
+  MIC_TEST_STOP: 'audio:mic-test-stop',
+  MIC_TEST_LEVEL: 'audio:mic-test-level',
+  AUDIO_PLAY_PCM: 'audio:play-pcm',
+  SPEAKER_TEST: 'audio:speaker-test',
 } as const;
 
 type ThemeMode = 'light' | 'dark' | 'system';
@@ -39,11 +53,8 @@ type ThemeMode = 'light' | 'dark' | 'system';
 interface UserSettings {
   theme: ThemeMode;
   selectedMicId: string;
-  selectedMicLabel: string;
   selectedOutputMicId: string;
-  selectedOutputMicLabel: string;
   selectedSpeakerId: string;
-  selectedSpeakerLabel: string;
   sourceLanguage: string;
   targetLanguage: string;
   autoReconnect: boolean;
@@ -106,6 +117,44 @@ const electronAPI = {
   // ─── Voice ──────────────────────────────────────────────────
   voice: {
     getConfig: () => ipcRenderer.invoke(CH.VOICE_GET_CONFIG),
+    connect: (): Promise<void> => ipcRenderer.invoke(CH.VOICE_CONNECT),
+    disconnect: (): Promise<void> => ipcRenderer.invoke(CH.VOICE_DISCONNECT),
+    getStatus: () => ipcRenderer.invoke(CH.VOICE_GET_STATUS),
+    onStatusChanged: (callback: (payload: { status: string; errors: string[] }) => void): (() => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, payload: { status: string; errors: string[] }) => callback(payload);
+      ipcRenderer.on(CH.VOICE_STATUS_CHANGED, handler);
+      return () => ipcRenderer.removeListener(CH.VOICE_STATUS_CHANGED, handler);
+    },
+    onMessage: (callback: (message: Record<string, unknown>) => void): (() => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, message: Record<string, unknown>) => callback(message);
+      ipcRenderer.on(CH.VOICE_MESSAGE, handler);
+      return () => ipcRenderer.removeListener(CH.VOICE_MESSAGE, handler);
+    },
+    onAudioReceived: (callback: (payload: { audio: number[]; sampleRate: number }) => void): (() => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, payload: { audio: number[]; sampleRate: number }) => callback(payload);
+      ipcRenderer.on(CH.VOICE_AUDIO_RECEIVED, handler);
+      return () => ipcRenderer.removeListener(CH.VOICE_AUDIO_RECEIVED, handler);
+    },
+  },
+
+  // ─── Audio Devices & I/O ─────────────────────────────────────
+  audio: {
+    getDevices: () => ipcRenderer.invoke(CH.AUDIO_GET_DEVICES),
+    listenStart: (inputDeviceId: number, outputDeviceId: number): Promise<void> =>
+      ipcRenderer.invoke(CH.LISTEN_START, inputDeviceId, outputDeviceId),
+    listenStop: (): Promise<void> => ipcRenderer.invoke(CH.LISTEN_STOP),
+    micTestStart: (deviceId: number): Promise<void> =>
+      ipcRenderer.invoke(CH.MIC_TEST_START, deviceId),
+    micTestStop: (): Promise<void> => ipcRenderer.invoke(CH.MIC_TEST_STOP),
+    onMicTestLevel: (callback: (payload: { level: number }) => void): (() => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, payload: { level: number }) => callback(payload);
+      ipcRenderer.on(CH.MIC_TEST_LEVEL, handler);
+      return () => ipcRenderer.removeListener(CH.MIC_TEST_LEVEL, handler);
+    },
+    playPcm: (audioArray: number[], sampleRate: number, outputDeviceId: number): Promise<void> =>
+      ipcRenderer.invoke(CH.AUDIO_PLAY_PCM, audioArray, sampleRate, outputDeviceId),
+    speakerTest: (deviceId: number): Promise<void> =>
+      ipcRenderer.invoke(CH.SPEAKER_TEST, deviceId),
   },
 };
 

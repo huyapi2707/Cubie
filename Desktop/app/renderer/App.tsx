@@ -1,5 +1,4 @@
 import { useEffect } from 'react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AppLayout } from '@/components/layout';
 import { useAppStore } from '@/store';
 import { useTheme } from '@/hooks';
@@ -7,16 +6,6 @@ import {
   DashboardPage,
   SettingsPage,
 } from '@/components/pages';
-
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      staleTime: 5 * 60 * 1000, // 5 minutes
-      retry: 2,
-      refetchOnWindowFocus: false,
-    },
-  },
-});
 
 function PageRouter() {
   const activePage = useAppStore((s) => s.activePage);
@@ -42,10 +31,8 @@ export default function App() {
   }, [hydrate]);
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <AppLayout>
-        <PageRouter />
-      </AppLayout>
-    </QueryClientProvider>
+    <AppLayout>
+      <PageRouter />
+    </AppLayout>
   );
 }

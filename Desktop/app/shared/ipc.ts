@@ -35,6 +35,28 @@ export const IPC_CHANNELS = {
 
   // Voice
   VOICE_GET_CONFIG: 'voice:get-config',
+  VOICE_CONNECT: 'voice:connect',
+  VOICE_DISCONNECT: 'voice:disconnect',
+  VOICE_GET_STATUS: 'voice:get-status',
+  VOICE_STATUS_CHANGED: 'voice:status-changed',
+  VOICE_MESSAGE: 'voice:message',
+  VOICE_AUDIO_RECEIVED: 'voice:audio-received',
+
+  // Audio devices (main process enumeration via audify)
+  AUDIO_GET_DEVICES: 'audio:get-devices',
+
+  // Listen: stream outputMic → speaker (main process)
+  LISTEN_START: 'audio:listen-start',
+  LISTEN_STOP: 'audio:listen-stop',
+
+  // Mic test: capture + denoise + level meter (main process)
+  MIC_TEST_START: 'audio:mic-test-start',
+  MIC_TEST_STOP: 'audio:mic-test-stop',
+  MIC_TEST_LEVEL: 'audio:mic-test-level',
+
+  // Audio playback (main process)
+  AUDIO_PLAY_PCM: 'audio:play-pcm',
+  SPEAKER_TEST: 'audio:speaker-test',
 } as const;
 
 export type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];
@@ -82,11 +104,8 @@ export interface VoiceConfig {
 export interface UserSettings {
   theme: ThemeMode;
   selectedMicId: string;
-  selectedMicLabel: string;
   selectedOutputMicId: string;
-  selectedOutputMicLabel: string;
   selectedSpeakerId: string;
-  selectedSpeakerLabel: string;
   sourceLanguage: string;
   targetLanguage: string;
   autoReconnect: boolean;
@@ -111,7 +130,20 @@ export interface IpcInvokeMap {
   [IPC_CHANNELS.VOICE_GET_CONFIG]: { args: void; result: VoiceConfig };
 }
 
+export interface VoiceStatusPayload {
+  status: 'disconnected' | 'connecting' | 'connected' | 'error';
+  errors: string[];
+}
+
+export interface VoiceAudioPayload {
+  audio: number[]; // Serialised Float32Array
+  sampleRate: number;
+}
+
 export interface IpcEventMap {
   [IPC_CHANNELS.THEME_CHANGED]: ThemeMode;
   [IPC_CHANNELS.SYSTEM_NOTIFICATION]: { title: string; body: string };
+  [IPC_CHANNELS.VOICE_STATUS_CHANGED]: VoiceStatusPayload;
+  [IPC_CHANNELS.VOICE_MESSAGE]: Record<string, unknown>;
+  [IPC_CHANNELS.VOICE_AUDIO_RECEIVED]: VoiceAudioPayload;
 }

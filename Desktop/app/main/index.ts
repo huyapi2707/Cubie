@@ -1,7 +1,8 @@
 import { app, BrowserWindow, shell, nativeTheme, Tray, Menu, nativeImage, ipcMain, session } from 'electron';
 import path from 'path';
 import { registerIpcHandlers } from './ipc-handlers';
-import { getSetting } from './settings-store';
+import { getSetting } from './services/settings-store';
+import { createVoiceService } from './services/voice-service';
 import type { VoiceConfig } from '../shared/ipc';
 
 // ─── Constants ─────────────────────────────────────────────────────
@@ -23,8 +24,7 @@ const VOICE_CONFIG: VoiceConfig = {
   defaultTargetLanguage: 'en',
 };
 
-// Expose voice config to renderer via IPC
-ipcMain.handle('voice:get-config', (): VoiceConfig => VOICE_CONFIG);
+// Voice config is now handled by the VoiceService singleton
 
 // Apply persisted theme before window is created (prevents flash)
 nativeTheme.themeSource = getSetting('theme');
@@ -197,9 +197,10 @@ function setupCSP(): void {
       ? "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'"
       : "script-src 'self' 'wasm-unsafe-eval'";
 
+    // WS is now handled exclusively in the main process — renderer only needs 'self'
     const connectSrc = isDev
-      ? `connect-src 'self' ${VOICE_SERVER_WS} ${VOICE_SERVER_HTTP} ws://localhost:5173`
-      : `connect-src 'self' ${VOICE_SERVER_WS} ${VOICE_SERVER_HTTP}`;
+      ? "connect-src 'self' ws://localhost:5173"
+      : "connect-src 'self'";
 
     const csp = [
       "default-src 'self'",
@@ -224,6 +225,10 @@ function setupCSP(): void {
 app.whenReady().then(() => {
   setupCSP();
   registerIpcHandlers();
+
+  // Initialize the main-process voice service (owns WS connection)
+  createVoiceService(VOICE_CONFIG);
+
   createMainWindow();
 
   app.on('activate', () => {

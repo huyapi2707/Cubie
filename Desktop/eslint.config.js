@@ -21,9 +21,23 @@ export default [
         ecmaFeatures: { jsx: true },
       },
       globals: {
+        // Browser / DOM
         window: 'readonly',
         document: 'readonly',
         console: 'readonly',
+        navigator: 'readonly',
+        HTMLDivElement: 'readonly',
+        HTMLSpanElement: 'readonly',
+        HTMLAudioElement: 'readonly',
+        AudioContext: 'readonly',
+        AudioWorkletNode: 'readonly',
+        MediaStream: 'readonly',
+        Audio: 'readonly',
+        Float32Array: 'readonly',
+        Uint8Array: 'readonly',
+        requestAnimationFrame: 'readonly',
+        cancelAnimationFrame: 'readonly',
+        // Node / Electron
         process: 'readonly',
         __dirname: 'readonly',
         setTimeout: 'readonly',
@@ -31,6 +45,7 @@ export default [
         setInterval: 'readonly',
         clearInterval: 'readonly',
         NodeJS: 'readonly',
+        Electron: 'readonly',
       },
     },
     rules: {
@@ -48,5 +63,19 @@ export default [
   },
   {
     ignores: ['dist/', 'release/', 'node_modules/'],
+  },
+  // Main process files need Node.js globals (Buffer, etc.)
+  {
+    files: ['app/main/**/*.ts'],
+    languageOptions: {
+      globals: {
+        Buffer: 'readonly',
+        __dirname: 'readonly',
+        require: 'readonly',
+        module: 'readonly',
+        setImmediate: 'readonly',
+        clearImmediate: 'readonly',
+      },
+    },
   },
 ];

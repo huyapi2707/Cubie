@@ -154,6 +154,7 @@ export class AudioPipelineService {
     );
 
     if (!sttResult || !sttResult.text) {
+      pipelineResult.stt = { text: "No voice detected", isFinal: true, confidence: 0 };
       pipelineResult.durationMs = Date.now() - startTime;
       return pipelineResult;
     }

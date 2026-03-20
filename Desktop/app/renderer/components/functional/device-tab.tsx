@@ -11,13 +11,10 @@ import { cn } from '@/lib/utils';
 
 export function DeviceTab() {
   const selectedMicId = useAppStore((s) => s.selectedMicId);
-  const selectedMicLabel = useAppStore((s) => s.selectedMicLabel);
   const setMicrophone = useAppStore((s) => s.setMicrophone);
   const selectedOutputMicId = useAppStore((s) => s.selectedOutputMicId);
-  const selectedOutputMicLabel = useAppStore((s) => s.selectedOutputMicLabel);
   const setOutputMic = useAppStore((s) => s.setOutputMic);
   const selectedSpeakerId = useAppStore((s) => s.selectedSpeakerId);
-  const selectedSpeakerLabel = useAppStore((s) => s.selectedSpeakerLabel);
   const setSpeaker = useAppStore((s) => s.setSpeaker);
   const { inputDevices, outputDevices, loading, error, refresh } = useAudioDevices();
 
@@ -71,12 +68,11 @@ export function DeviceTab() {
                   devices={inputDevices}
                   loading={loading}
                   selectedId={selectedMicId}
-                  selectedLabel={selectedMicLabel}
-                  onSelect={(id, label) => setMicrophone(id, label)}
+                  onSelect={(id) => setMicrophone(id)}
                   placeholder="Select a microphone..."
                   icon={<Mic className="h-4 w-4 shrink-0 text-muted-foreground" />}
                 />
-                {selectedMicId && <MicTester deviceId={selectedMicId} />}
+                {selectedMicId && <MicTester deviceId={Number(selectedMicId)} />}
               </div>
 
               <Separator />
@@ -91,8 +87,7 @@ export function DeviceTab() {
                   devices={inputDevices}
                   loading={loading}
                   selectedId={selectedOutputMicId}
-                  selectedLabel={selectedOutputMicLabel}
-                  onSelect={(id, label) => setOutputMic(id, label)}
+                  onSelect={(id) => setOutputMic(id)}
                   placeholder="Select an output microphone..."
                   icon={<Mic className="h-4 w-4 shrink-0 text-muted-foreground" />}
                 />
@@ -119,12 +114,11 @@ export function DeviceTab() {
                   devices={outputDevices}
                   loading={loading}
                   selectedId={selectedSpeakerId}
-                  selectedLabel={selectedSpeakerLabel}
-                  onSelect={(id, label) => setSpeaker(id, label)}
+                  onSelect={(id) => setSpeaker(id)}
                   placeholder="Select a speaker..."
                   icon={<Volume2 className="h-4 w-4 shrink-0 text-muted-foreground" />}
                 />
-                {selectedSpeakerId && <SpeakerTester deviceId={selectedSpeakerId} />}
+                {selectedSpeakerId && <SpeakerTester deviceId={Number(selectedSpeakerId)} />}
               </div>
             </CardContent>
           </Card>

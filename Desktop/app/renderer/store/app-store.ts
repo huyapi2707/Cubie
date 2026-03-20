@@ -24,18 +24,15 @@ interface AppState {
   platform: string;
   setAppInfo: (info: { version: string; platform: string }) => void;
 
-  // Audio Devices
+  // Audio Devices (IDs only — labels are derived from device list at render time)
   selectedMicId: string;
-  selectedMicLabel: string;
-  setMicrophone: (id: string, label: string) => void;
+  setMicrophone: (id: string) => void;
 
   selectedOutputMicId: string;
-  selectedOutputMicLabel: string;
-  setOutputMic: (id: string, label: string) => void;
+  setOutputMic: (id: string) => void;
 
   selectedSpeakerId: string;
-  selectedSpeakerLabel: string;
-  setSpeaker: (id: string, label: string) => void;
+  setSpeaker: (id: string) => void;
 
   // Running state
   running: boolean;
@@ -97,24 +94,21 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   // Audio Devices
   selectedMicId: '',
-  selectedMicLabel: '',
-  setMicrophone: (id, label) => {
-    set({ selectedMicId: id, selectedMicLabel: label });
-    persistSettings({ selectedMicId: id, selectedMicLabel: label });
+  setMicrophone: (id) => {
+    set({ selectedMicId: id });
+    persistSettings({ selectedMicId: id });
   },
 
   selectedOutputMicId: '',
-  selectedOutputMicLabel: '',
-  setOutputMic: (id, label) => {
-    set({ selectedOutputMicId: id, selectedOutputMicLabel: label });
-    persistSettings({ selectedOutputMicId: id, selectedOutputMicLabel: label });
+  setOutputMic: (id) => {
+    set({ selectedOutputMicId: id });
+    persistSettings({ selectedOutputMicId: id });
   },
 
   selectedSpeakerId: '',
-  selectedSpeakerLabel: '',
-  setSpeaker: (id, label) => {
-    set({ selectedSpeakerId: id, selectedSpeakerLabel: label });
-    persistSettings({ selectedSpeakerId: id, selectedSpeakerLabel: label });
+  setSpeaker: (id) => {
+    set({ selectedSpeakerId: id });
+    persistSettings({ selectedSpeakerId: id });
   },
 
   // Running state (in-memory only — not persisted)
@@ -168,11 +162,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       if (settings) {
         patch.theme = settings.theme || 'dark';
         patch.selectedMicId = settings.selectedMicId || '';
-        patch.selectedMicLabel = settings.selectedMicLabel || '';
         patch.selectedOutputMicId = settings.selectedOutputMicId || '';
-        patch.selectedOutputMicLabel = settings.selectedOutputMicLabel || '';
         patch.selectedSpeakerId = settings.selectedSpeakerId || '';
-        patch.selectedSpeakerLabel = settings.selectedSpeakerLabel || '';
         // Use saved languages, or fallback to voice config defaults
         patch.sourceLanguage = settings.sourceLanguage || voiceConfig?.defaultSourceLanguage || '';
         patch.targetLanguage = settings.targetLanguage || voiceConfig?.defaultTargetLanguage || '';

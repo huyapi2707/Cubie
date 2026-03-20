@@ -1,0 +1,8 @@
+{
+  "name": "rnnoise-native",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Native RNNoise N-API addon for Electron",
+  "main": "build/Release/rnnoise.node",
+  "gypfile": true
+}

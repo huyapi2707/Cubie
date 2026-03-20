@@ -2,9 +2,14 @@ import { useState, useCallback } from 'react';
 import { Volume2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { deviceService } from '@/services';
 
-export function SpeakerTester({ deviceId }: { deviceId: string }) {
+/**
+ * Speaker Tester — plays a two-tone ping through the specified speaker
+ * via the main process (RtAudio).
+ *
+ * @param deviceId - The RtAudio numeric device ID
+ */
+export function SpeakerTester({ deviceId }: { deviceId: number }) {
   const [playing, setPlaying] = useState(false);
 
   const playPing = useCallback(async () => {
@@ -12,54 +17,13 @@ export function SpeakerTester({ deviceId }: { deviceId: string }) {
     setPlaying(true);
 
     try {
-      const ctx = new AudioContext();
-      await ctx.resume();
-
-      // Route to the selected speaker (non-blocking)
-      try {
-        await deviceService.routeContextToSpeaker(ctx, deviceId);
-      } catch (e) {
-        console.warn('[SpeakerTester] setSinkId failed, using default output:', e);
-      }
-
-      const gain = ctx.createGain();
-      gain.connect(ctx.destination);
-
-      const osc1 = ctx.createOscillator();
-      osc1.type = 'sine';
-      osc1.frequency.value = 880;
-      osc1.connect(gain);
-
-      const osc2 = ctx.createOscillator();
-      osc2.type = 'sine';
-      osc2.frequency.value = 660;
-      osc2.connect(gain);
-
-      const now = ctx.currentTime;
-
-      gain.gain.setValueAtTime(0, now);
-      gain.gain.linearRampToValueAtTime(0.5, now + 0.02);
-      gain.gain.linearRampToValueAtTime(0.5, now + 0.1);
-      gain.gain.linearRampToValueAtTime(0, now + 0.2);
-
-      gain.gain.setValueAtTime(0, now + 0.25);
-      gain.gain.linearRampToValueAtTime(0.5, now + 0.27);
-      gain.gain.linearRampToValueAtTime(0.5, now + 0.37);
-      gain.gain.linearRampToValueAtTime(0, now + 0.5);
-
-      osc1.start(now);
-      osc1.stop(now + 0.2);
-      osc2.start(now + 0.25);
-      osc2.stop(now + 0.5);
-
-      setTimeout(() => {
-        ctx.close().catch(() => {});
-        setPlaying(false);
-      }, 600);
+      await window.electronAPI.audio.speakerTest(deviceId);
     } catch (e) {
       console.error('[SpeakerTester] Failed to play ping:', e);
-      setPlaying(false);
     }
+
+    // Match the ping duration (~600ms)
+    setTimeout(() => setPlaying(false), 600);
   }, [deviceId, playing]);
 
   return (

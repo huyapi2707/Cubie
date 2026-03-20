@@ -1,16 +1,13 @@
 import Store from 'electron-store';
-import type { UserSettings, ThemeMode } from '../shared/ipc';
+import type { UserSettings, ThemeMode } from '../../shared/ipc';
 
 // ─── Schema & Defaults ─────────────────────────────────────────────
 
 const DEFAULTS: UserSettings = {
   theme: 'dark',
   selectedMicId: '',
-  selectedMicLabel: '',
   selectedOutputMicId: '',
-  selectedOutputMicLabel: '',
   selectedSpeakerId: '',
-  selectedSpeakerLabel: '',
   sourceLanguage: 'en',
   targetLanguage: 'vi',
   autoReconnect: true,
@@ -20,11 +17,8 @@ const DEFAULTS: UserSettings = {
 const schema = {
   theme: { type: 'string' as const, enum: ['light', 'dark', 'system'], default: DEFAULTS.theme },
   selectedMicId: { type: 'string' as const, default: '' },
-  selectedMicLabel: { type: 'string' as const, default: '' },
   selectedOutputMicId: { type: 'string' as const, default: '' },
-  selectedOutputMicLabel: { type: 'string' as const, default: '' },
   selectedSpeakerId: { type: 'string' as const, default: '' },
-  selectedSpeakerLabel: { type: 'string' as const, default: '' },
   sourceLanguage: { type: 'string' as const, default: 'en' },
   targetLanguage: { type: 'string' as const, default: 'vi' },
   autoReconnect: { type: 'boolean' as const, default: true },
@@ -45,11 +39,8 @@ export function getSettings(): UserSettings {
   return {
     theme: store.get('theme') as ThemeMode,
     selectedMicId: store.get('selectedMicId'),
-    selectedMicLabel: store.get('selectedMicLabel'),
     selectedOutputMicId: store.get('selectedOutputMicId'),
-    selectedOutputMicLabel: store.get('selectedOutputMicLabel'),
     selectedSpeakerId: store.get('selectedSpeakerId'),
-    selectedSpeakerLabel: store.get('selectedSpeakerLabel'),
     sourceLanguage: store.get('sourceLanguage'),
     targetLanguage: store.get('targetLanguage'),
     autoReconnect: store.get('autoReconnect'),

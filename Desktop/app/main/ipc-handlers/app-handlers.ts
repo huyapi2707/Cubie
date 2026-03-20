@@ -1,14 +1,16 @@
+/**
+ * App IPC Handlers — Main Process
+ *
+ * Handles application, window, theme, system, settings, and file system IPC.
+ */
+
 import { ipcMain, app, dialog, shell, BrowserWindow, nativeTheme } from 'electron';
 import { readFile, writeFile } from 'fs/promises';
 import os from 'os';
-import { IPC_CHANNELS, type SystemInfo, type ThemeMode, type UserSettings } from '../shared/ipc';
-import { getSettings, setSettings, getSetting } from './settings-store';
+import { IPC_CHANNELS, type SystemInfo, type ThemeMode, type UserSettings } from '../../shared/ipc';
+import { getSettings, setSettings, getSetting } from '../services/settings-store';
 
-/**
- * Register all IPC handlers for the main process.
- * Each handler maps to a typed channel from the shared IPC definitions.
- */
-export function registerIpcHandlers(): void {
+export function registerAppHandlers(): void {
   // ─── Application ───────────────────────────────────────────────
   ipcMain.handle(IPC_CHANNELS.APP_GET_VERSION, () => {
     return app.getVersion();
@@ -41,27 +43,24 @@ export function registerIpcHandlers(): void {
 
   // ─── Theme ─────────────────────────────────────────────────────
   ipcMain.handle(IPC_CHANNELS.THEME_GET, (): ThemeMode => {
-    // Load persisted theme instead of relying on nativeTheme state
     return getSetting('theme');
   });
 
   ipcMain.handle(IPC_CHANNELS.THEME_SET, (_event, mode: ThemeMode) => {
     nativeTheme.themeSource = mode;
-    // Persist the theme to disk
     setSettings({ theme: mode });
     BrowserWindow.getAllWindows().forEach((win) => {
       win.webContents.send(IPC_CHANNELS.THEME_CHANGED, mode);
     });
   });
 
-  // ─── Settings (persisted user preferences) ─────────────────────
+  // ─── Settings ──────────────────────────────────────────────────
   ipcMain.handle(IPC_CHANNELS.SETTINGS_GET, (): UserSettings => {
     return getSettings();
   });
 
   ipcMain.handle(IPC_CHANNELS.SETTINGS_SET, (_event, partial: Partial<UserSettings>) => {
     setSettings(partial);
-    // If theme was changed via settings, also update nativeTheme
     if (partial.theme) {
       nativeTheme.themeSource = partial.theme;
       BrowserWindow.getAllWindows().forEach((win) => {
@@ -85,7 +84,6 @@ export function registerIpcHandlers(): void {
   });
 
   ipcMain.handle(IPC_CHANNELS.SYSTEM_OPEN_EXTERNAL, async (_event, url: string) => {
-    // Security: only allow http/https URLs
     if (url.startsWith('http://') || url.startsWith('https://')) {
       await shell.openExternal(url);
     }

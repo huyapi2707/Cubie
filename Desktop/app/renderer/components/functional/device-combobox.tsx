@@ -6,7 +6,6 @@ export function DeviceCombobox({
   devices,
   loading,
   selectedId,
-  selectedLabel,
   onSelect,
   placeholder,
   icon,
@@ -14,8 +13,7 @@ export function DeviceCombobox({
   devices: { deviceId: string; label: string }[];
   loading: boolean;
   selectedId: string;
-  selectedLabel: string;
-  onSelect: (id: string, label: string) => void;
+  onSelect: (id: string) => void;
   placeholder: string;
   icon: React.ReactNode;
 }) {
@@ -23,6 +21,9 @@ export function DeviceCombobox({
   const [search, setSearch] = useState('');
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // Derive the display label from the devices list
+  const selectedLabel = devices.find((d) => d.deviceId === selectedId)?.label ?? '';
 
   const filtered = devices.filter((d) =>
     d.label.toLowerCase().includes(search.toLowerCase()),
@@ -96,7 +97,7 @@ export function DeviceCombobox({
                   <button
                     key={device.deviceId}
                     onClick={() => {
-                      onSelect(device.deviceId, device.label);
+                      onSelect(device.deviceId);
                       setOpen(false);
                       setSearch('');
                     }}

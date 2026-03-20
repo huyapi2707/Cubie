@@ -3,7 +3,16 @@
  * These types mirror the API shape in app/preload/index.ts.
  */
 
-import type { ThemeMode, UserSettings } from '@shared/ipc';
+import type { ThemeMode, UserSettings, VoiceStatusPayload, VoiceAudioPayload } from '@shared/ipc';
+
+interface AudioDeviceInfo {
+  id: number;
+  name: string;
+  inputChannels: number;
+  outputChannels: number;
+  isDefaultInput: boolean;
+  isDefaultOutput: boolean;
+}
 
 interface ElectronAPI {
   app: {
@@ -38,6 +47,22 @@ interface ElectronAPI {
   };
   voice: {
     getConfig: () => Promise<import('@shared/ipc').VoiceConfig>;
+    connect: () => Promise<void>;
+    disconnect: () => Promise<void>;
+    getStatus: () => Promise<{ status: string; sessionId: string | null; errors: string[] }>;
+    onStatusChanged: (callback: (payload: VoiceStatusPayload) => void) => () => void;
+    onMessage: (callback: (message: Record<string, unknown>) => void) => () => void;
+    onAudioReceived: (callback: (payload: VoiceAudioPayload) => void) => () => void;
+  };
+  audio: {
+    getDevices: () => Promise<{ inputs: AudioDeviceInfo[]; outputs: AudioDeviceInfo[] }>;
+    listenStart: (inputDeviceId: number, outputDeviceId: number) => Promise<void>;
+    listenStop: () => Promise<void>;
+    micTestStart: (deviceId: number) => Promise<void>;
+    micTestStop: () => Promise<void>;
+    onMicTestLevel: (callback: (payload: { level: number }) => void) => () => void;
+    playPcm: (audioArray: number[], sampleRate: number, outputDeviceId: number) => Promise<void>;
+    speakerTest: (deviceId: number) => Promise<void>;
   };
 }
 
