@@ -1,13 +1,13 @@
-import { RtAudio, RtAudioFormat } from 'audify';
+import { type RtAudio, RtAudioFormat } from 'audify';
 import { AudioPipeline } from './audio-pipeline';
 import { SOURCE_SAMPLE_RATE } from './voice-service';
-import { calculateRms } from './utils';
+import { calculateRms, createRtAudio } from './utils';
 
 // ─── Device Enumeration ─────────────────────────────────────────────────────
 
 export function listInputDevices(): { id: number; name: string }[] {
   try {
-    const rt = new RtAudio();
+    const rt = createRtAudio();
     return rt.getDevices()
       .filter((d) => d.inputChannels > 0)
       .map((d) => ({ id: d.id, name: d.name }));
@@ -19,7 +19,7 @@ export function listInputDevices(): { id: number; name: string }[] {
 
 export function listOutputDevices(): { id: number; name: string }[] {
   try {
-    const rt = new RtAudio();
+    const rt = createRtAudio();
     return rt.getDevices()
       .filter((d) => d.outputChannels > 0)
       .map((d) => ({ id: d.id, name: d.name }));
@@ -31,7 +31,7 @@ export function listOutputDevices(): { id: number; name: string }[] {
 
 export function getDefaultInputDeviceId(): number {
   try {
-    return new RtAudio().getDefaultInputDevice();
+    return createRtAudio().getDefaultInputDevice();
   } catch (err) {
     return 0;
   }
@@ -39,7 +39,7 @@ export function getDefaultInputDeviceId(): number {
 
 export function getDefaultOutputDeviceId(): number {
   try {
-    return new RtAudio().getDefaultOutputDevice();
+    return createRtAudio().getDefaultOutputDevice();
   } catch (err) {
     return 0;
   }
@@ -51,7 +51,7 @@ export function getDefaultOutputDeviceId(): number {
  */
 function getOutputChannelCount(deviceId: number): number {
   try {
-    const rt = new RtAudio();
+    const rt = createRtAudio();
     const dev = rt.getDevices().find((d) => d.id === deviceId);
     return dev?.outputChannels || 2;
   } catch {
@@ -114,7 +114,7 @@ export function startListen(inputDeviceId: number, outputDeviceId: number): void
   const outChannels = getOutputChannelCount(outputDeviceId);
 
   try {
-    listenAudio = new RtAudio();
+    listenAudio = createRtAudio();
 
     // Input is mono; output must match the device's actual channel count.
     // When input and output channel counts differ, RtAudio handles resampling
@@ -171,7 +171,7 @@ export async function startMicTest(micId: number, speakerId: number, onLevel: (l
 
     // Open an output stream for speaker loopback (Int16 PCM — matches pipeline format)
     micTestOutChannels = getOutputChannelCount(resolvedSpeakerId);
-    micTestOutput = new RtAudio();
+    micTestOutput = createRtAudio();
     micTestOutput.openStream(
       { deviceId: resolvedSpeakerId, nChannels: micTestOutChannels },
       null,
@@ -231,7 +231,7 @@ export function stopMicTest(): void {
  */
 export function playPcm(pcm: Float32Array, sampleRate: number, outputDeviceId: number): void {
   try {
-    const rt = new RtAudio();
+    const rt = createRtAudio();
     const frameSize = 480;
     const outChannels = getOutputChannelCount(outputDeviceId);
 
@@ -279,7 +279,7 @@ export function playPcm(pcm: Float32Array, sampleRate: number, outputDeviceId: n
         try {
           if (rt.isStreamRunning()) rt.stop();
           if (rt.isStreamOpen()) rt.closeStream();
-        } catch (e) {}
+        } catch (e) { }
       }
     });
 

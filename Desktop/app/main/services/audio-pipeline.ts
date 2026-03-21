@@ -15,10 +15,10 @@
 
 import path from 'path';
 import { app } from 'electron';
-import { RtAudio, RtAudioFormat } from 'audify';
+import { type RtAudio, RtAudioFormat } from 'audify';
 import { getDefaultInputDeviceId, extractMonoWithGain } from './audio-service';
 import type { RNNoise } from '../../../native/rnnoise/index';
-import { calculateRms } from './utils';
+import { calculateRms, createRtAudio } from './utils';
 
 // Load the native RNNoise addon (compiled from xiph/rnnoise via N-API)
 // In dev:  __dirname = <project>/dist/main/main/services/ → resolve up to project root
@@ -107,7 +107,7 @@ export class AudioPipeline {
     console.log(`[AudioPipeline] Using input device id: ${resolvedId}`);
 
     // 3. Open RtAudio input stream (stereo capture)
-    this.rtAudio = new RtAudio();
+    this.rtAudio = createRtAudio();
     this.rtAudio.openStream(
       null, // No output
       { deviceId: resolvedId, nChannels: INPUT_CHANNELS }, // Stereo input
