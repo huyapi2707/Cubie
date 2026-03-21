@@ -8,6 +8,9 @@ release/
 Thumbs.db
 *.tsbuildinfo
 
-# Native addon build artifacts
-native/rnnoise/build/
+# Native addon build artifacts (keep only the compiled .node binary)
+native/rnnoise/build/*
+!native/rnnoise/build/Release/
+native/rnnoise/build/Release/*
+!native/rnnoise/build/Release/rnnoise.node
 native/rnnoise-src/
