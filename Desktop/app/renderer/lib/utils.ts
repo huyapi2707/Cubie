@@ -14,10 +14,4 @@ export function cn(...inputs: ClassValue[]): string {
  * @param samples - Float32Array of PCM samples in [-1, 1] range
  * @returns RMS value (0 = silence, 1 = max amplitude)
  */
-export function calculateRms(samples: Float32Array): number {
-  let sumSquares = 0;
-  for (let i = 0; i < samples.length; i++) {
-    sumSquares += samples[i] * samples[i];
-  }
-  return Math.sqrt(sumSquares / samples.length);
-}
+

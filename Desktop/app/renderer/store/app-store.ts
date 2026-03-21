@@ -25,13 +25,13 @@ interface AppState {
   setAppInfo: (info: { version: string; platform: string }) => void;
 
   // Audio Devices (IDs only — labels are derived from device list at render time)
-  selectedMicId: string;
+  inMicId: string;
   setMicrophone: (id: string) => void;
 
-  selectedOutputMicId: string;
+  outMicId: string;
   setOutputMic: (id: string) => void;
 
-  selectedSpeakerId: string;
+  outSpeakerId: string;
   setSpeaker: (id: string) => void;
 
   // Running state
@@ -93,22 +93,22 @@ export const useAppStore = create<AppState>((set, get) => ({
   setAppInfo: (info) => set(info),
 
   // Audio Devices
-  selectedMicId: '',
+  inMicId: '',
   setMicrophone: (id) => {
-    set({ selectedMicId: id });
-    persistSettings({ selectedMicId: id });
+    set({ inMicId: id });
+    persistSettings({ inMicId: id });
   },
 
-  selectedOutputMicId: '',
+  outMicId: '',
   setOutputMic: (id) => {
-    set({ selectedOutputMicId: id });
-    persistSettings({ selectedOutputMicId: id });
+    set({ outMicId: id });
+    persistSettings({ outMicId: id });
   },
 
-  selectedSpeakerId: '',
+  outSpeakerId: '',
   setSpeaker: (id) => {
-    set({ selectedSpeakerId: id });
-    persistSettings({ selectedSpeakerId: id });
+    set({ outSpeakerId: id });
+    persistSettings({ outSpeakerId: id });
   },
 
   // Running state (in-memory only — not persisted)
@@ -161,9 +161,9 @@ export const useAppStore = create<AppState>((set, get) => ({
 
       if (settings) {
         patch.theme = settings.theme || 'dark';
-        patch.selectedMicId = settings.selectedMicId || '';
-        patch.selectedOutputMicId = settings.selectedOutputMicId || '';
-        patch.selectedSpeakerId = settings.selectedSpeakerId || '';
+        patch.inMicId = settings.inMicId || '';
+        patch.outMicId = settings.outMicId || '';
+        patch.outSpeakerId = settings.outSpeakerId || '';
         // Use saved languages, or fallback to voice config defaults
         patch.sourceLanguage = settings.sourceLanguage || voiceConfig?.defaultSourceLanguage || '';
         patch.targetLanguage = settings.targetLanguage || voiceConfig?.defaultTargetLanguage || '';

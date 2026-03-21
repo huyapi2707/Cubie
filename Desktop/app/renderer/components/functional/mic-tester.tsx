@@ -12,7 +12,7 @@ const TOTAL_BARS = 20;
  *
  * @param deviceId - The RtAudio numeric device ID
  */
-export function MicTester({ deviceId }: { deviceId: number }) {
+export function MicTester({ micId, speakerId }: { micId: number; speakerId: number }) {
   const [testing, setTesting] = useState(false);
   const barsRef = useRef<(HTMLDivElement | null)[]>([]);
   const levelRef = useRef<HTMLSpanElement | null>(null);
@@ -37,10 +37,10 @@ export function MicTester({ deviceId }: { deviceId: number }) {
   }, []);
 
   const startTest = useCallback(async () => {
-    if (!deviceId) return;
+    if (!micId) return;
 
     try {
-      await window.electronAPI.audio.micTestStart(deviceId);
+      await window.electronAPI.audio.micTestStart(micId, speakerId);
 
       // Subscribe to level events from main process
       const unsub = window.electronAPI.audio.onMicTestLevel(({ level }) => {
@@ -73,12 +73,12 @@ export function MicTester({ deviceId }: { deviceId: number }) {
     } catch {
       stopTest();
     }
-  }, [deviceId, stopTest]);
+  }, [micId, speakerId, stopTest]);
 
-  // Stop when deviceLabel changes or component unmounts
+  // Stop when device changes or component unmounts
   useEffect(() => {
     return () => stopTest();
-  }, [deviceId, stopTest]);
+  }, [micId, speakerId, stopTest]);
 
   const toggleTest = () => (testing ? stopTest() : startTest());
 

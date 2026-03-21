@@ -103,9 +103,9 @@ export interface VoiceConfig {
 
 export interface UserSettings {
   theme: ThemeMode;
-  selectedMicId: string;
-  selectedOutputMicId: string;
-  selectedSpeakerId: string;
+  inMicId: string;
+  outMicId: string;
+  outSpeakerId: string;
   sourceLanguage: string;
   targetLanguage: string;
   autoReconnect: boolean;

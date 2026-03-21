@@ -1,5 +1,7 @@
 import { RtAudio, RtAudioFormat } from 'audify';
 import { AudioPipeline } from './audio-pipeline';
+import { SOURCE_SAMPLE_RATE } from './voice-service';
+import { calculateRms } from './utils';
 
 // ─── Device Enumeration ─────────────────────────────────────────────────────
 
@@ -57,6 +59,51 @@ function getOutputChannelCount(deviceId: number): number {
   }
 }
 
+/**
+ * Extract mono channel 0 from an interleaved stereo Int16 PCM buffer.
+ * Applies a gain multiplier and clamps to Int16 range [-32768, 32767].
+ */
+export function extractMonoWithGain(pcmBuffer: Buffer, channels: number, gain: number): Float32Array {
+  const totalInt16Samples = pcmBuffer.length / 2;
+  const monoSamples = totalInt16Samples / channels;
+  const float32 = new Float32Array(monoSamples);
+  for (let i = 0; i < monoSamples; i++) {
+    const raw = pcmBuffer.readInt16LE(i * channels * 2);
+    float32[i] = Math.max(-32768, Math.min(32767, raw * gain));
+  }
+  return float32;
+}
+
+/**
+ * Write mono SINT16 data to a (possibly multi-channel) RtAudio speaker.
+ * Handles mono → multi-channel duplication.
+ *
+ * @param rtAudio - The RtAudio output stream to write to
+ * @param monoData - Mono samples: Buffer (raw SINT16) or Float32Array (Int16-range values)
+ * @param outChannels - Number of output channels on the speaker device
+ */
+export function writeMonoToSpeaker(rtAudio: RtAudio, monoData: Buffer | Float32Array, outChannels: number): void {
+  // Fast path: mono speaker + Buffer input → pass through
+  if (outChannels === 1 && Buffer.isBuffer(monoData)) {
+    rtAudio.write(monoData);
+    return;
+  }
+
+  const sampleCount = Buffer.isBuffer(monoData) ? monoData.length / 2 : monoData.length;
+  const buf = Buffer.alloc(sampleCount * outChannels * 2);
+
+  for (let i = 0; i < sampleCount; i++) {
+    const sample = Buffer.isBuffer(monoData)
+      ? monoData.readInt16LE(i * 2)
+      : Math.max(-32768, Math.min(32767, monoData[i] | 0));
+    for (let ch = 0; ch < outChannels; ch++) {
+      buf.writeInt16LE(sample, (i * outChannels + ch) * 2);
+    }
+  }
+
+  rtAudio.write(buf);
+}
+
 // ─── Listen Stream (Mic -> Speaker) ─────────────────────────────────────────
 
 let listenAudio: RtAudio | null = null;
@@ -76,27 +123,12 @@ export function startListen(inputDeviceId: number, outputDeviceId: number): void
       { deviceId: outputDeviceId, nChannels: outChannels },
       { deviceId: inputDeviceId, nChannels: 1 },
       RtAudioFormat.RTAUDIO_SINT16,
-      48000,
+      SOURCE_SAMPLE_RATE,
       480,
       'ListenStream',
       (inputData: Buffer) => {
         if (!listenAudio || !listenAudio.isStreamRunning()) return;
-
-        if (outChannels === 1) {
-          // Mono → mono: pass through
-          listenAudio.write(inputData);
-        } else {
-          // Mono → stereo: duplicate each sample across channels
-          const monoSamples = inputData.length / 2; // 16-bit = 2 bytes per sample
-          const stereo = Buffer.alloc(monoSamples * 2 * outChannels);
-          for (let i = 0; i < monoSamples; i++) {
-            const sample = inputData.readInt16LE(i * 2);
-            for (let ch = 0; ch < outChannels; ch++) {
-              stereo.writeInt16LE(sample, (i * outChannels + ch) * 2);
-            }
-          }
-          listenAudio.write(stereo);
-        }
+        writeMonoToSpeaker(listenAudio, inputData, outChannels);
       },
       null
     );
@@ -125,23 +157,52 @@ export function stopListen(): void {
   }
 }
 
-// ─── Mic Test (Capture -> Denoise -> RMS Level) ─────────────────────────────
+// ─── Mic Test (Capture → Denoise → RMS Level + Speaker Output) ──────────────
 
 let micTestPipeline: AudioPipeline | null = null;
+let micTestOutput: RtAudio | null = null;
+let micTestOutChannels = 1;
 
-export async function startMicTest(deviceId: number, onLevel: (level: number) => void): Promise<void> {
+export async function startMicTest(micId: number, speakerId: number, onLevel: (level: number) => void): Promise<void> {
   stopMicTest();
   try {
+    // Resolve output speaker (fall back to default if 0 or invalid)
+    const resolvedSpeakerId = speakerId > 0 ? speakerId : getDefaultOutputDeviceId();
+
+    // Open an output stream for speaker loopback (Int16 PCM — matches pipeline format)
+    micTestOutChannels = getOutputChannelCount(resolvedSpeakerId);
+    micTestOutput = new RtAudio();
+    micTestOutput.openStream(
+      { deviceId: resolvedSpeakerId, nChannels: micTestOutChannels },
+      null,
+      RtAudioFormat.RTAUDIO_SINT16,
+      SOURCE_SAMPLE_RATE,
+      480,
+      'MicTestOutput',
+      null,
+      null,
+    );
+    micTestOutput.start();
+    console.log(`[AudioService] Mic test speaker output: device ${resolvedSpeakerId} (${micTestOutChannels}ch)`);
+
     micTestPipeline = new AudioPipeline({
       onFrame: (level) => {
         onLevel(level);
       },
+      onDenoisedFrame: (frame) => {
+        if (!micTestOutput || !micTestOutput.isStreamRunning()) return;
+        try {
+          writeMonoToSpeaker(micTestOutput, frame, micTestOutChannels);
+        } catch (err) {
+          console.error('[AudioService] Error writing to mic test output:', err);
+        }
+      },
     });
-    await micTestPipeline.start(deviceId);
-    console.log(`[AudioService] Started mic test for device: ${deviceId}`);
+    await micTestPipeline.start(micId);
+    console.log(`[AudioService] Started mic test for mic: ${micId}, speaker: ${resolvedSpeakerId}`);
   } catch (err) {
     console.error('[AudioService] Failed to start mic test:', err);
-    micTestPipeline = null;
+    stopMicTest();
   }
 }
 
@@ -149,8 +210,17 @@ export function stopMicTest(): void {
   if (micTestPipeline) {
     micTestPipeline.stop();
     micTestPipeline = null;
-    console.log('[AudioService] Stopped mic test');
   }
+  if (micTestOutput) {
+    try {
+      if (micTestOutput.isStreamRunning()) micTestOutput.stop();
+      if (micTestOutput.isStreamOpen()) micTestOutput.closeStream();
+    } catch (err) {
+      console.warn('[AudioService] Error stopping mic test output:', err);
+    }
+    micTestOutput = null;
+  }
+  console.log('[AudioService] Stopped mic test');
 }
 
 // ─── PCM Playback ───────────────────────────────────────────────────────────
@@ -168,7 +238,7 @@ export function playPcm(pcm: Float32Array, sampleRate: number, outputDeviceId: n
     rt.openStream(
       { deviceId: outputDeviceId, nChannels: outChannels },
       null,
-      RtAudioFormat.RTAUDIO_FLOAT32,
+      RtAudioFormat.RTAUDIO_SINT16,
       sampleRate,
       frameSize,
       'PcmPlayback',
@@ -176,36 +246,28 @@ export function playPcm(pcm: Float32Array, sampleRate: number, outputDeviceId: n
       null
     );
 
-    // Convert mono PCM → interleaved stereo if needed
-    let outPcm: Float32Array;
-    if (outChannels > 1) {
-      outPcm = new Float32Array(pcm.length * outChannels);
-      for (let i = 0; i < pcm.length; i++) {
-        for (let ch = 0; ch < outChannels; ch++) {
-          outPcm[i * outChannels + ch] = pcm[i];
-        }
-      }
-    } else {
-      outPcm = pcm;
+    // Convert normalized Float32 [-1,1] → Int16-range Float32Array
+    const int16Pcm = new Float32Array(pcm.length);
+    for (let i = 0; i < pcm.length; i++) {
+      int16Pcm[i] = Math.max(-32768, Math.min(32767, pcm[i] * 32768));
     }
 
-    const frameBytes = frameSize * outChannels * 4; // float32 = 4 bytes per sample
-    const buffer = Buffer.from(outPcm.buffer, outPcm.byteOffset, outPcm.byteLength);
-
-    // Queue all frames before starting — RtAudio plays them sequentially
     let totalFrames = 0;
-    for (let offset = 0; offset < buffer.length; offset += frameBytes) {
-      const remaining = buffer.length - offset;
-      const chunkLength = Math.min(remaining, frameBytes);
-      const chunk = buffer.subarray(offset, offset + chunkLength);
+    for (let offset = 0; offset < int16Pcm.length; offset += frameSize) {
+      const remaining = int16Pcm.length - offset;
+      const chunkLen = Math.min(remaining, frameSize);
+      const chunk = int16Pcm.subarray(offset, offset + chunkLen);
 
-      if (chunk.length < frameBytes) {
-        const padded = Buffer.alloc(frameBytes);
-        chunk.copy(padded);
-        rt.write(padded);
+      // Pad last chunk if needed
+      let frame: Float32Array;
+      if (chunkLen < frameSize) {
+        frame = new Float32Array(frameSize);
+        frame.set(chunk);
       } else {
-        rt.write(chunk);
+        frame = chunk;
       }
+
+      writeMonoToSpeaker(rt, frame, outChannels);
       totalFrames++;
     }
 
@@ -231,7 +293,7 @@ export function playPcm(pcm: Float32Array, sampleRate: number, outputDeviceId: n
 // ─── Speaker Test ───────────────────────────────────────────────────────────
 
 export function playSpeakerTest(outputDeviceId: number): void {
-  const sampleRate = 48000;
+  const sampleRate = SOURCE_SAMPLE_RATE;
   const duration = 0.6;
   const totalSamples = Math.floor(sampleRate * duration);
   const pcm = new Float32Array(totalSamples);

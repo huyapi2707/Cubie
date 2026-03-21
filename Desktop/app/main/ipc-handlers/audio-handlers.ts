@@ -37,8 +37,8 @@ export function registerAudioHandlers(): void {
   });
 
   // Mic test (capture + denoise → level meter) — receives numeric device ID
-  ipcMain.handle(IPC_CHANNELS.MIC_TEST_START, async (_event, deviceId: number) => {
-    await startMicTest(deviceId, (level) => {
+  ipcMain.handle(IPC_CHANNELS.MIC_TEST_START, async (_event, micId: number, speakerId: number) => {
+    await startMicTest(micId, speakerId, (level: number) => {
       sendToRenderer(IPC_CHANNELS.MIC_TEST_LEVEL, { level });
     });
   });

@@ -52,9 +52,9 @@ type ThemeMode = 'light' | 'dark' | 'system';
 
 interface UserSettings {
   theme: ThemeMode;
-  selectedMicId: string;
-  selectedOutputMicId: string;
-  selectedSpeakerId: string;
+  inMicId: string;
+  outMicId: string;
+  outSpeakerId: string;
   sourceLanguage: string;
   targetLanguage: string;
   autoReconnect: boolean;
@@ -143,8 +143,8 @@ const electronAPI = {
     listenStart: (inputDeviceId: number, outputDeviceId: number): Promise<void> =>
       ipcRenderer.invoke(CH.LISTEN_START, inputDeviceId, outputDeviceId),
     listenStop: (): Promise<void> => ipcRenderer.invoke(CH.LISTEN_STOP),
-    micTestStart: (deviceId: number): Promise<void> =>
-      ipcRenderer.invoke(CH.MIC_TEST_START, deviceId),
+    micTestStart: (micId: number, speakerId: number): Promise<void> =>
+      ipcRenderer.invoke(CH.MIC_TEST_START, micId, speakerId),
     micTestStop: (): Promise<void> => ipcRenderer.invoke(CH.MIC_TEST_STOP),
     onMicTestLevel: (callback: (payload: { level: number }) => void): (() => void) => {
       const handler = (_event: Electron.IpcRendererEvent, payload: { level: number }) => callback(payload);

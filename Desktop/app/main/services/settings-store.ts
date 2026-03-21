@@ -4,10 +4,10 @@ import type { UserSettings, ThemeMode } from '../../shared/ipc';
 // ─── Schema & Defaults ─────────────────────────────────────────────
 
 const DEFAULTS: UserSettings = {
-  theme: 'dark',
-  selectedMicId: '',
-  selectedOutputMicId: '',
-  selectedSpeakerId: '',
+  theme: 'light',
+  inMicId: '',
+  outMicId: '',
+  outSpeakerId: '',
   sourceLanguage: 'en',
   targetLanguage: 'vi',
   autoReconnect: true,
@@ -16,9 +16,9 @@ const DEFAULTS: UserSettings = {
 
 const schema = {
   theme: { type: 'string' as const, enum: ['light', 'dark', 'system'], default: DEFAULTS.theme },
-  selectedMicId: { type: 'string' as const, default: '' },
-  selectedOutputMicId: { type: 'string' as const, default: '' },
-  selectedSpeakerId: { type: 'string' as const, default: '' },
+  inMicId: { type: 'string' as const, default: '' },
+  outMicId: { type: 'string' as const, default: '' },
+  outSpeakerId: { type: 'string' as const, default: '' },
   sourceLanguage: { type: 'string' as const, default: 'en' },
   targetLanguage: { type: 'string' as const, default: 'vi' },
   autoReconnect: { type: 'boolean' as const, default: true },
@@ -38,9 +38,9 @@ const store = new Store<UserSettings>({
 export function getSettings(): UserSettings {
   return {
     theme: store.get('theme') as ThemeMode,
-    selectedMicId: store.get('selectedMicId'),
-    selectedOutputMicId: store.get('selectedOutputMicId'),
-    selectedSpeakerId: store.get('selectedSpeakerId'),
+    inMicId: store.get('inMicId'),
+    outMicId: store.get('outMicId'),
+    outSpeakerId: store.get('outSpeakerId'),
     sourceLanguage: store.get('sourceLanguage'),
     targetLanguage: store.get('targetLanguage'),
     autoReconnect: store.get('autoReconnect'),

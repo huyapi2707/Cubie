@@ -16,8 +16,9 @@
 import path from 'path';
 import { app } from 'electron';
 import { RtAudio, RtAudioFormat } from 'audify';
-import { getDefaultInputDeviceId } from './audio-service';
+import { getDefaultInputDeviceId, extractMonoWithGain } from './audio-service';
 import type { RNNoise } from '../../../native/rnnoise/index';
+import { calculateRms } from './utils';
 
 // Load the native RNNoise addon (compiled from xiph/rnnoise via N-API)
 // In dev:  __dirname = <project>/dist/main/main/services/ → resolve up to project root
@@ -32,14 +33,18 @@ const rnnoiseAddon = require(rnnoiseNodePath) as { RNNoise: new () => RNNoise };
 // ─── Constants ──────────────────────────────────────────────────────────────
 
 const SAMPLE_RATE = 48000;
-const CHANNELS = 1;
+const INPUT_CHANNELS = 2;  // Hardware capture channels (Intel Smart Sound needs stereo)
 const FRAME_SIZE = 480; // 10ms @ 48kHz (RNNoise native frame size)
 
-// VAD thresholds
-const SPEECH_THRESHOLD = 0.01;     // RMS to trigger speech start
-const SILENCE_THRESHOLD = 0.005;   // RMS below this = silence during speech
+// VAD thresholds (Int16 range)
+const SPEECH_THRESHOLD = 328;      // ~0.01 × 32768
+const SILENCE_THRESHOLD = 164;     // ~0.005 × 32768
 const HANGOVER_FRAMES = 30;        // ~300ms silence before speech end
 const PREROLL_FRAMES = 10;         // ~100ms of pre-roll
+
+// Software input gain — amplifies quiet mic hardware (e.g. Intel Smart Sound)
+// Adjust this if the mic is too quiet or too loud
+const INPUT_GAIN = 50;
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -48,6 +53,8 @@ export interface AudioPipelineCallbacks {
   onSpeechEnd?: (audio: Float32Array) => void;
   /** Called for every denoised frame with its RMS level (useful for level meters). */
   onFrame?: (level: number) => void;
+  /** Called for every denoised frame with the raw audio data (useful for speaker output). */
+  onDenoisedFrame?: (frame: Float32Array) => void;
 }
 
 // ─── Pipeline ───────────────────────────────────────────────────────────────
@@ -58,8 +65,7 @@ export class AudioPipeline {
   private callbacks: AudioPipelineCallbacks;
   private running = false;
 
-  // Pre-allocated scratch buffers — zero per-frame allocations for the hot path
-  private rnnoiseInput = new Float32Array(FRAME_SIZE);
+  // Pre-allocated scratch buffer — zero per-frame allocations for the hot path
   private denoised = new Float32Array(FRAME_SIZE);
 
   // Frame accumulation — RtAudio may deliver buffers of varying sizes
@@ -100,11 +106,11 @@ export class AudioPipeline {
     const resolvedId = deviceId > 0 ? deviceId : getDefaultInputDeviceId();
     console.log(`[AudioPipeline] Using input device id: ${resolvedId}`);
 
-    // 3. Open RtAudio input stream
+    // 3. Open RtAudio input stream (stereo capture)
     this.rtAudio = new RtAudio();
     this.rtAudio.openStream(
       null, // No output
-      { deviceId: resolvedId, nChannels: CHANNELS }, // Input
+      { deviceId: resolvedId, nChannels: INPUT_CHANNELS }, // Stereo input
       RtAudioFormat.RTAUDIO_SINT16, // 16-bit signed int PCM
       SAMPLE_RATE,
       FRAME_SIZE,
@@ -161,15 +167,11 @@ export class AudioPipeline {
 
   /**
    * Called by RtAudio when new PCM data is available.
-   * Receives Buffer of int16 PCM samples.
+   * Receives Buffer of interleaved stereo Int16 PCM samples: [L, R, L, R, ...]
+   * Extracts channel 0 (left) as mono for the pipeline.
    */
   private onAudioInput(pcmBuffer: Buffer): void {
-    // Convert Int16 Buffer → Float32Array (normalized -1..1)
-    const sampleCount = pcmBuffer.length / 2;
-    const float32 = new Float32Array(sampleCount);
-    for (let i = 0; i < sampleCount; i++) {
-      float32[i] = pcmBuffer.readInt16LE(i * 2) / 32768.0;
-    }
+    const float32 = extractMonoWithGain(pcmBuffer, INPUT_CHANNELS, INPUT_GAIN);
 
     // Accumulate into FRAME_SIZE chunks
     let offset = 0;
@@ -189,31 +191,24 @@ export class AudioPipeline {
 
   /**
    * Process a single 480-sample frame through RNNoise + VAD.
+   * Input frame contains raw Int16-range values [-32768, 32767].
    */
   private processFrame(frame: Float32Array): void {
-    // RNNoise expects 16-bit PCM values in Float32Array
-    // Convert normalized float → 16-bit range (reusing scratch buffer)
-    for (let i = 0; i < FRAME_SIZE; i++) {
-      this.rnnoiseInput[i] = frame[i] * 32768.0;
-    }
-
-    // Apply native RNNoise — returns new Float32Array with denoised output
+    // Apply native RNNoise — input/output both in Int16 range, no normalization
     if (this.rnnoise) {
-      const output = this.rnnoise.process(this.rnnoiseInput);
-      // Convert back to normalized float (reusing scratch buffer)
-      for (let i = 0; i < FRAME_SIZE; i++) {
-        this.denoised[i] = output[i] / 32768.0;
-      }
+      const output = this.rnnoise.process(frame);
+      this.denoised.set(output);
     } else {
-      // Fallback: pass through unprocessed (normalized)
       this.denoised.set(frame);
     }
 
-    // RMS-based VAD
+    // RMS-based VAD (Int16 range)
     const rms = calculateRms(this.denoised);
+    // Notify per-frame listeners (level meter — normalized for UI)
+    this.callbacks.onFrame?.(rms / 32768.0);
 
-    // Notify per-frame listeners (level meter)
-    this.callbacks.onFrame?.(rms);
+    // Notify per-frame listeners (raw denoised audio for speaker output)
+    this.callbacks.onDenoisedFrame?.(this.denoised);
 
     if (!this.speaking) {
       // Update pre-roll ring buffer
@@ -266,12 +261,3 @@ export class AudioPipeline {
   }
 }
 
-// ─── Helpers ────────────────────────────────────────────────────────────────
-
-function calculateRms(samples: Float32Array): number {
-  let sumSquares = 0;
-  for (let i = 0; i < samples.length; i++) {
-    sumSquares += samples[i] * samples[i];
-  }
-  return Math.sqrt(sumSquares / samples.length);
-}

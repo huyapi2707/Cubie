@@ -22,8 +22,8 @@ export function DashboardPage() {
   const setRunning = useAppStore((s) => s.setRunning);
   const sourceLanguage = useAppStore((s) => s.sourceLanguage);
   const targetLanguage = useAppStore((s) => s.targetLanguage);
-  const outputMicId = useAppStore((s) => s.selectedOutputMicId);
-  const speakerId = useAppStore((s) => s.selectedSpeakerId);
+  const outputMicId = useAppStore((s) => s.outMicId);
+  const speakerId = useAppStore((s) => s.outSpeakerId);
 
   // ── Local state ───────────────────────────────────────────────────────────
   const [connecting, setConnecting] = useState(false);

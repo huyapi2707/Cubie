@@ -13,7 +13,7 @@ const RENDERER_DEV_URL = 'http://localhost:5173';
 // In production, change the host and switch to wss:// / https://.
 const VOICE_SERVER_HOST = isDev ? 'localhost:3001' : 'localhost:3001';
 const VOICE_SERVER_WS = `ws://${VOICE_SERVER_HOST}`;
-const VOICE_SERVER_HTTP = `http://${VOICE_SERVER_HOST}`;
+
 
 const VOICE_CONFIG: VoiceConfig = {
   wsUrl: `${VOICE_SERVER_WS}/ws`,

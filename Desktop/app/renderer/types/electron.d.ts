@@ -58,7 +58,7 @@ interface ElectronAPI {
     getDevices: () => Promise<{ inputs: AudioDeviceInfo[]; outputs: AudioDeviceInfo[] }>;
     listenStart: (inputDeviceId: number, outputDeviceId: number) => Promise<void>;
     listenStop: () => Promise<void>;
-    micTestStart: (deviceId: number) => Promise<void>;
+    micTestStart: (micId: number, speakerId: number) => Promise<void>;
     micTestStop: () => Promise<void>;
     onMicTestLevel: (callback: (payload: { level: number }) => void) => () => void;
     playPcm: (audioArray: number[], sampleRate: number, outputDeviceId: number) => Promise<void>;

@@ -16,11 +16,12 @@ import { AudioPipeline } from './audio-pipeline';
 import { getSettings } from './settings-store';
 import type { VoiceConfig } from '../../shared/ipc';
 import { IPC_CHANNELS } from '../../shared/ipc';
+import { calculateRms } from './utils';
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
-const SOURCE_SAMPLE_RATE = 48000;
-const SILENCE_THRESHOLD = 0.005;
+export const SOURCE_SAMPLE_RATE = 48000;
+export const SILENCE_THRESHOLD = 0.005;
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -204,7 +205,7 @@ export class MainVoiceService {
 
   private async startAudioPipeline(): Promise<void> {
     const settings = getSettings();
-    const deviceId = Number(settings.selectedMicId) || 0;
+    const deviceId = Number(settings.inMicId) || 0;
 
     try {
       this.pipeline = new AudioPipeline({
@@ -233,14 +234,20 @@ export class MainVoiceService {
   private handleSpeechSegment(audio: Float32Array): void {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
 
+    // Audio is in Int16 range — check RMS in that scale
     const rms = calculateRms(audio);
     if (rms < SILENCE_THRESHOLD) {
-      console.log(`[VoiceService] Speech discarded (RMS: ${rms.toFixed(4)})`);
+      console.log(`[VoiceService] Speech discarded (RMS: ${rms.toFixed(1)})`);
       return;
     }
 
     try {
-      const opusData = encodeOpus(audio, SOURCE_SAMPLE_RATE);
+      // Normalize Int16 → [-1, 1] for Opus encoding
+      const normalized = new Float32Array(audio.length);
+      for (let i = 0; i < audio.length; i++) {
+        normalized[i] = audio[i] / 32768.0;
+      }
+      const opusData = encodeOpus(normalized, SOURCE_SAMPLE_RATE);
       this.ws.send(opusData);
       console.log(
         `[VoiceService] Sent Opus: ${opusData.byteLength} bytes (${(audio.length / SOURCE_SAMPLE_RATE).toFixed(2)}s)`,
@@ -305,22 +312,13 @@ export class MainVoiceService {
 
     if (!settings.sourceLanguage) errors.push('Source language is not set');
     if (!settings.targetLanguage) errors.push('Target language is not set');
-    if (!settings.selectedMicId) errors.push('Input microphone is not selected');
-    if (!settings.selectedOutputMicId) errors.push('Output microphone is not selected');
+    if (!settings.inMicId) errors.push('Input microphone is not selected');
+    if (!settings.outMicId) errors.push('Output microphone is not selected');
 
     return errors;
   }
 }
 
-// ─── Helpers ────────────────────────────────────────────────────────────────
-
-function calculateRms(samples: Float32Array): number {
-  let sumSquares = 0;
-  for (let i = 0; i < samples.length; i++) {
-    sumSquares += samples[i] * samples[i];
-  }
-  return Math.sqrt(sumSquares / samples.length);
-}
 
 // ─── Factory ────────────────────────────────────────────────────────────────
 
