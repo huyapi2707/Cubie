@@ -13,6 +13,7 @@ import WebSocket from 'ws';
 import { BrowserWindow } from 'electron';
 import { encodeOpus, decodeOpus, isOpusEncoded } from './opus-codec';
 import { AudioPipeline } from './audio-pipeline';
+import { playPcm } from './audio-service';
 import { getSettings } from './settings-store';
 import type { VoiceConfig } from '../../shared/ipc';
 import { IPC_CHANNELS } from '../../shared/ipc';
@@ -189,15 +190,16 @@ export class MainVoiceService {
     try {
       if (isOpusEncoded(data)) {
         const { audio, sampleRate } = decodeOpus(data);
-        this.sendToRenderer(IPC_CHANNELS.VOICE_AUDIO_RECEIVED, {
-          audio: Array.from(audio),
-          sampleRate,
-        });
+
+        // Play TTS audio directly in main process — no renderer round-trip
+        const settings = getSettings();
+        const outputDeviceId = Number(settings.outMicId) || 0;
+        playPcm(audio, sampleRate, outputDeviceId);
       } else {
         console.warn('[VoiceService] Received unknown binary message');
       }
     } catch (err) {
-      console.error('[VoiceService] Failed to decode audio:', err);
+      console.error('[VoiceService] Failed to decode/play audio:', err);
     }
   }
 

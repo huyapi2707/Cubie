@@ -57,6 +57,11 @@ export const IPC_CHANNELS = {
   // Audio playback (main process)
   AUDIO_PLAY_PCM: 'audio:play-pcm',
   SPEAKER_TEST: 'audio:speaker-test',
+
+  // Raw audio level meter (no denoise, no speaker — RMS only)
+  RAW_LEVEL_START: 'audio:raw-level-start',
+  RAW_LEVEL_STOP: 'audio:raw-level-stop',
+  RAW_LEVEL_DATA: 'audio:raw-level-data',
 } as const;
 
 export type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];
@@ -110,6 +115,8 @@ export interface UserSettings {
   targetLanguage: string;
   autoReconnect: boolean;
   ttsGender: 'male' | 'female' | 'neutral';
+  /** Pre-denoise noise gate threshold in dBFS (e.g. -50). Range: -60 to -20. */
+  noiseGateDb: number;
 }
 
 // ─── IPC Request/Response Maps ─────────────────────────────────────

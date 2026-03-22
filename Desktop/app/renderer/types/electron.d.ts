@@ -63,6 +63,9 @@ interface ElectronAPI {
     onMicTestLevel: (callback: (payload: { level: number }) => void) => () => void;
     playPcm: (audioArray: number[], sampleRate: number, outputDeviceId: number) => Promise<void>;
     speakerTest: (deviceId: number) => Promise<void>;
+    rawLevelStart: (micId: number) => Promise<void>;
+    rawLevelStop: () => Promise<void>;
+    onRawLevelData: (callback: (payload: { db: number }) => void) => () => void;
   };
 }
 

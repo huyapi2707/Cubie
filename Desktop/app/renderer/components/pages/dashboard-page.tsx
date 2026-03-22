@@ -97,13 +97,7 @@ export function DashboardPage() {
     return () => clearInterval(timer);
   }, [startTime]);
 
-  // Stream server audio (TTS) → outputMic (via main process RtAudio)
-  useEffect(() => {
-    const unsubscribe = voiceService.onAudio((audio, sampleRate) => {
-      window.electronAPI.audio.playPcm(Array.from(audio), sampleRate, Number(outputMicId) || 0);
-    });
-    return unsubscribe;
-  }, [outputMicId]);
+  // TTS audio is played directly in the main process (no renderer round-trip)
 
   // ── 2. Listen: stream outputMic → speaker (via main process) ───────────────
 

@@ -16,9 +16,11 @@
 import path from 'path';
 import { app } from 'electron';
 import { type RtAudio, RtAudioFormat } from 'audify';
-import { getDefaultInputDeviceId, extractMonoWithGain, createRtAudio } from './audio-service';
+import { getDefaultInputDeviceId, createRtAudio } from './audio-service';
+import { getSetting } from './settings-store';
 import type { RNNoise } from '../../../native/rnnoise/index';
 import { calculateRms, rmsToDb } from './utils';
+import { AGC } from './agc';
 
 // Load the native RNNoise addon (compiled from xiph/rnnoise via N-API)
 // In dev:  __dirname = <project>/dist/main/main/services/ → resolve up to project root
@@ -33,8 +35,8 @@ const rnnoiseAddon = require(rnnoiseNodePath) as { RNNoise: new () => RNNoise };
 // ─── Constants ──────────────────────────────────────────────────────────────
 
 const SAMPLE_RATE = 48000;
-const INPUT_CHANNELS = 2;  // Hardware capture channels (Intel Smart Sound needs stereo)
 const FRAME_SIZE = 480; // 10ms @ 48kHz (RNNoise native frame size)
+
 
 // VAD thresholds (dBFS — decibels relative to Int16 full-scale)
 // 0 dBFS = loudest possible signal, more negative = quieter
@@ -43,9 +45,7 @@ const SILENCE_THRESHOLD_DB = -46;  // Silence gate — below this is considered 
 const HANGOVER_FRAMES = 30;        // ~300ms silence before speech end
 const PREROLL_FRAMES = 10;         // ~100ms of pre-roll
 
-// Software input gain — amplifies quiet mic hardware (e.g. Intel Smart Sound)
-// Adjust this if the mic is too quiet or too loud
-const INPUT_GAIN = 3;
+// Software gain is now handled by AGC (see agc.ts) — no static multiplier
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -63,6 +63,7 @@ export interface AudioPipelineCallbacks {
 export class AudioPipeline {
   private rtAudio: RtAudio | null = null;
   private rnnoise: RNNoise | null = null;
+  private agc = new AGC();
   private callbacks: AudioPipelineCallbacks;
   private running = false;
 
@@ -111,7 +112,7 @@ export class AudioPipeline {
     this.rtAudio = createRtAudio();
     this.rtAudio.openStream(
       null, // No output
-      { deviceId: resolvedId, nChannels: INPUT_CHANNELS }, // Stereo input
+      { deviceId: resolvedId, nChannels: 1 }, // Mono input
       RtAudioFormat.RTAUDIO_SINT16, // 16-bit signed int PCM
       SAMPLE_RATE,
       FRAME_SIZE,
@@ -148,7 +149,8 @@ export class AudioPipeline {
       this.rnnoise = null;
     }
 
-    // Reset VAD state
+    // Reset AGC + VAD state
+    this.agc.reset();
     this.speaking = false;
     this.hangover = 0;
     this.frameIndex = 0;
@@ -168,11 +170,15 @@ export class AudioPipeline {
 
   /**
    * Called by RtAudio when new PCM data is available.
-   * Receives Buffer of interleaved stereo Int16 PCM samples: [L, R, L, R, ...]
-   * Extracts channel 0 (left) as mono for the pipeline.
+   * Receives Buffer of mono Int16 PCM samples (nChannels=1).
    */
   private onAudioInput(pcmBuffer: Buffer): void {
-    const float32 = extractMonoWithGain(pcmBuffer, INPUT_CHANNELS, INPUT_GAIN);
+    // Direct Int16 → Float32 (mono, no gain — AGC handles amplification)
+    const sampleCount = pcmBuffer.length / 2;
+    const float32 = new Float32Array(sampleCount);
+    for (let i = 0; i < sampleCount; i++) {
+      float32[i] = pcmBuffer.readInt16LE(i * 2);
+    }
 
     // Accumulate into FRAME_SIZE chunks
     let offset = 0;
@@ -195,12 +201,29 @@ export class AudioPipeline {
    * Input frame contains raw Int16-range values [-32768, 32767].
    */
   private processFrame(frame: Float32Array): void {
-    // Apply native RNNoise — input/output both in Int16 range, no normalization
-    if (this.rnnoise) {
-      const output = this.rnnoise.process(frame);
-      this.denoised.set(output);
+    // ── 1. AGC — adaptive gain (replaces static INPUT_GAIN) ──────────────
+    const rawRms = calculateRms(frame);
+    const rawDb  = rmsToDb(rawRms);
+    const gateDb = getSetting('noiseGateDb');
+
+    this.agc.process(frame, rawDb, gateDb);
+
+    // ── 2. Noise gate (post-AGC) ────────────────────────────────────────
+    // Re-measure after AGC. If still below gate, zero out so RNNoise
+    // doesn't amplify faint background noise.
+    const postRms = calculateRms(frame);
+    const postDb  = rmsToDb(postRms);
+
+    if (postDb < gateDb) {
+      this.denoised.fill(0);
     } else {
-      this.denoised.set(frame);
+      // ── 3. RNNoise denoise ──────────────────────────────────────────
+      if (this.rnnoise) {
+        const output = this.rnnoise.process(frame);
+        this.denoised.set(output);
+      } else {
+        this.denoised.set(frame);
+      }
     }
 
     // dB-based VAD

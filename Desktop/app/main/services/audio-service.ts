@@ -1,7 +1,7 @@
 import { RtAudio, RtAudioFormat, RtAudioApi } from 'audify';
 import { AudioPipeline } from './audio-pipeline';
 import { SOURCE_SAMPLE_RATE } from './voice-service';
-import { calculateRms } from './utils';
+import { calculateRms, rmsToDb } from './utils';
 
 
 /**
@@ -351,3 +351,56 @@ export function playSpeakerTest(outputDeviceId: number): void {
 
   playPcm(pcm, sampleRate, outputDeviceId);
 }
+
+// ─── Raw Level Meter (no denoise, no speaker) ───────────────────────────────
+
+const RAW_INPUT_GAIN = 1;       // Unity gain — show true mic level (AGC handles amplification)
+const RAW_FRAME_SIZE = 480;     // 10ms @ 48kHz
+
+let rawLevelAudio: RtAudio | null = null;
+
+/**
+ * Start a lightweight raw audio capture that only computes dBFS.
+ * No RNNoise, no noise gate, no speaker output — just raw level.
+ * Sends dBFS value (e.g. -45) via the callback.
+ */
+export function startRawLevel(micId: number, onLevel: (db: number) => void): void {
+  stopRawLevel();
+  try {
+    rawLevelAudio = createRtAudio();
+    rawLevelAudio.openStream(
+      null, // No output
+      { deviceId: micId, nChannels: 1 },
+      RtAudioFormat.RTAUDIO_SINT16,
+      SOURCE_SAMPLE_RATE,
+      RAW_FRAME_SIZE,
+      'RawLevelMeter',
+      (pcmBuffer: Buffer) => {
+        const mono = extractMonoWithGain(pcmBuffer, 1, RAW_INPUT_GAIN);
+        const rms = calculateRms(mono);
+        const db = rmsToDb(rms);
+        onLevel(db);
+      },
+      null,
+    );
+    rawLevelAudio.start();
+    console.log(`[AudioService] Started raw level meter for mic: ${micId}`);
+  } catch (err) {
+    console.error('[AudioService] Failed to start raw level meter:', err);
+    stopRawLevel();
+  }
+}
+
+export function stopRawLevel(): void {
+  if (rawLevelAudio) {
+    try {
+      if (rawLevelAudio.isStreamRunning()) rawLevelAudio.stop();
+      if (rawLevelAudio.isStreamOpen()) rawLevelAudio.closeStream();
+    } catch (err) {
+      console.warn('[AudioService] Error stopping raw level meter:', err);
+    }
+    rawLevelAudio = null;
+    console.log('[AudioService] Stopped raw level meter');
+  }
+}
+

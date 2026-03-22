@@ -52,6 +52,10 @@ interface AppState {
   autoReconnect: boolean;
   setAutoReconnect: (enabled: boolean) => void;
 
+  // Noise Gate (dBFS)
+  noiseGateDb: number;
+  setNoiseGateDb: (db: number) => void;
+
   // Settings hydration
   _hydrated: boolean;
   _hydrate: () => Promise<void>;
@@ -145,6 +149,13 @@ export const useAppStore = create<AppState>((set, get) => ({
     persistSettings({ autoReconnect: enabled });
   },
 
+  // Noise Gate
+  noiseGateDb: -50,
+  setNoiseGateDb: (db) => {
+    set({ noiseGateDb: db });
+    persistSettings({ noiseGateDb: db });
+  },
+
   // Settings hydration — called once on app startup
   _hydrated: false,
   _hydrate: async () => {
@@ -169,6 +180,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         patch.targetLanguage = settings.targetLanguage || voiceConfig?.defaultTargetLanguage || '';
         patch.autoReconnect = settings.autoReconnect ?? true;
         patch.ttsGender = settings.ttsGender || 'neutral';
+        patch.noiseGateDb = settings.noiseGateDb ?? -50;
       }
 
       set(patch as Partial<AppState>);

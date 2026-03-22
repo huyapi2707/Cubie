@@ -46,6 +46,9 @@ const CH = {
   MIC_TEST_LEVEL: 'audio:mic-test-level',
   AUDIO_PLAY_PCM: 'audio:play-pcm',
   SPEAKER_TEST: 'audio:speaker-test',
+  RAW_LEVEL_START: 'audio:raw-level-start',
+  RAW_LEVEL_STOP: 'audio:raw-level-stop',
+  RAW_LEVEL_DATA: 'audio:raw-level-data',
 } as const;
 
 type ThemeMode = 'light' | 'dark' | 'system';
@@ -155,6 +158,15 @@ const electronAPI = {
       ipcRenderer.invoke(CH.AUDIO_PLAY_PCM, audioArray, sampleRate, outputDeviceId),
     speakerTest: (deviceId: number): Promise<void> =>
       ipcRenderer.invoke(CH.SPEAKER_TEST, deviceId),
+    rawLevelStart: (micId: number): Promise<void> =>
+      ipcRenderer.invoke(CH.RAW_LEVEL_START, micId),
+    rawLevelStop: (): Promise<void> =>
+      ipcRenderer.invoke(CH.RAW_LEVEL_STOP),
+    onRawLevelData: (callback: (payload: { db: number }) => void): (() => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, payload: { db: number }) => callback(payload);
+      ipcRenderer.on(CH.RAW_LEVEL_DATA, handler);
+      return () => ipcRenderer.removeListener(CH.RAW_LEVEL_DATA, handler);
+    },
   },
 };
 

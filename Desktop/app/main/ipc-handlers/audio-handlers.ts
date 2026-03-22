@@ -16,6 +16,8 @@ import {
   stopMicTest,
   playPcm,
   playSpeakerTest,
+  startRawLevel,
+  stopRawLevel,
 } from '../services/audio-service';
 
 export function registerAudioHandlers(): void {
@@ -56,6 +58,17 @@ export function registerAudioHandlers(): void {
   // Speaker test (ping tone) — receives numeric device ID
   ipcMain.handle(IPC_CHANNELS.SPEAKER_TEST, (_event, deviceId: number) => {
     playSpeakerTest(deviceId);
+  });
+
+  // Raw level meter (no denoise, no speaker — RMS of raw input)
+  ipcMain.handle(IPC_CHANNELS.RAW_LEVEL_START, (_event, micId: number) => {
+    startRawLevel(micId, (db: number) => {
+      sendToRenderer(IPC_CHANNELS.RAW_LEVEL_DATA, { db });
+    });
+  });
+
+  ipcMain.handle(IPC_CHANNELS.RAW_LEVEL_STOP, () => {
+    stopRawLevel();
   });
 }
 

@@ -12,6 +12,7 @@ const DEFAULTS: UserSettings = {
   targetLanguage: 'vi',
   autoReconnect: true,
   ttsGender: 'neutral',
+  noiseGateDb: -50,
 };
 
 const schema = {
@@ -23,6 +24,7 @@ const schema = {
   targetLanguage: { type: 'string' as const, default: 'vi' },
   autoReconnect: { type: 'boolean' as const, default: true },
   ttsGender: { type: 'string' as const, enum: ['male', 'female', 'neutral'], default: 'neutral' },
+  noiseGateDb: { type: 'number' as const, minimum: -60, maximum: -20, default: -50 },
 };
 
 // ─── Singleton Instance ────────────────────────────────────────────
@@ -45,6 +47,7 @@ export function getSettings(): UserSettings {
     targetLanguage: store.get('targetLanguage'),
     autoReconnect: store.get('autoReconnect'),
     ttsGender: store.get('ttsGender') as 'male' | 'female' | 'neutral',
+    noiseGateDb: store.get('noiseGateDb'),
   };
 }
 

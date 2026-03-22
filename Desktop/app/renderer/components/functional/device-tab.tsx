@@ -1,13 +1,17 @@
-import { Mic, Volume2, RefreshCw } from 'lucide-react';
+import { Mic, Volume2, RefreshCw, ShieldCheck } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { DeviceCombobox } from '@/components/functional/device-combobox';
 import { MicTester } from '@/components/functional/mic-tester';
 import { SpeakerTester } from '@/components/functional/speaker-tester';
+import { RawLevelMeter } from '@/components/functional/raw-level-meter';
+import { Slider } from '@/components/ui/slider';
 import { useAudioDevices } from '@/hooks';
 import { useAppStore } from '@/store';
 import { cn } from '@/lib/utils';
+
+// ─── Device Tab ─────────────────────────────────────────────────────────────
 
 export function DeviceTab() {
   const inMicId = useAppStore((s) => s.inMicId);
@@ -16,6 +20,8 @@ export function DeviceTab() {
   const setOutputMic = useAppStore((s) => s.setOutputMic);
   const outSpeakerId = useAppStore((s) => s.outSpeakerId);
   const setSpeaker = useAppStore((s) => s.setSpeaker);
+  const noiseGateDb = useAppStore((s) => s.noiseGateDb);
+  const setNoiseGateDb = useAppStore((s) => s.setNoiseGateDb);
   const { inputDevices, outputDevices, loading, error, refresh } = useAudioDevices();
 
   return (
@@ -120,6 +126,45 @@ export function DeviceTab() {
                 />
                 {outSpeakerId && <SpeakerTester deviceId={Number(outSpeakerId)} />}
               </div>
+            </CardContent>
+          </Card>
+
+          {/* ─── Voice Sensitivity Card ───────────────────────────── */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <ShieldCheck className="h-4 w-4" />
+                Voice Sensitivity
+              </CardTitle>
+              <CardDescription>Control how much sound is captured from your microphone</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <label className="text-sm font-medium">Sensitivity Threshold</label>
+                  <span className="text-sm font-mono tabular-nums text-muted-foreground">
+                    {noiseGateDb} dBFS
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Audio below this level is silenced before noise reduction. Lower values let more sound through.
+                </p>
+                <Slider
+                  id="noise-gate-slider"
+                  min={-60}
+                  max={-20}
+                  step={1}
+                  value={noiseGateDb}
+                  onChange={setNoiseGateDb}
+                />
+                <div className="flex justify-between text-[11px] text-muted-foreground">
+                  <span>More sensitive</span>
+                  <span>Less sensitive</span>
+                </div>
+              </div>
+
+              {/* Raw volume meter for calibration */}
+              {inMicId && <RawLevelMeter micId={Number(inMicId)} />}
             </CardContent>
           </Card>
         </>
