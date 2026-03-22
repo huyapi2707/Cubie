@@ -15,19 +15,11 @@ export function calculateRms(samples: Float32Array): number {
 }
 
 /**
- * Create a new RtAudio instance with the platform-appropriate API.
- *
- * On Windows, `UNSPECIFIED` can auto-select ASIO when ASIO drivers are
- * installed (e.g. VB-Audio, Realtek ASIO).  ASIO only exposes devices
- * with their own ASIO drivers, hiding consumer audio endpoints.
- * Forcing WASAPI avoids this and enumerates all active Windows devices.
- *
- * macOS and Linux don't have this problem — CoreAudio / PulseAudio are
- * always the right default — so we leave them as UNSPECIFIED.
+ * Convert an RMS value (Int16 range) to decibels relative to full-scale (dBFS).
+ * 0 dBFS = 32768 (Int16 max). Silence returns -Infinity.
  */
-export function createRtAudio(): RtAudio {
-  const api = process.platform === 'win32'
-    ? RtAudioApi.WINDOWS_WASAPI
-    : RtAudioApi.UNSPECIFIED;
-  return new RtAudio(api);
+export function rmsToDb(rms: number): number {
+  if (rms <= 0) return -Infinity;
+  return 20 * Math.log10(rms / 32768);
 }
+

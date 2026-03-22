@@ -16,9 +16,9 @@
 import path from 'path';
 import { app } from 'electron';
 import { type RtAudio, RtAudioFormat } from 'audify';
-import { getDefaultInputDeviceId, extractMonoWithGain } from './audio-service';
+import { getDefaultInputDeviceId, extractMonoWithGain, createRtAudio } from './audio-service';
 import type { RNNoise } from '../../../native/rnnoise/index';
-import { calculateRms, createRtAudio } from './utils';
+import { calculateRms, rmsToDb } from './utils';
 
 // Load the native RNNoise addon (compiled from xiph/rnnoise via N-API)
 // In dev:  __dirname = <project>/dist/main/main/services/ → resolve up to project root
@@ -36,15 +36,16 @@ const SAMPLE_RATE = 48000;
 const INPUT_CHANNELS = 2;  // Hardware capture channels (Intel Smart Sound needs stereo)
 const FRAME_SIZE = 480; // 10ms @ 48kHz (RNNoise native frame size)
 
-// VAD thresholds (Int16 range)
-const SPEECH_THRESHOLD = 328;      // ~0.01 × 32768
-const SILENCE_THRESHOLD = 164;     // ~0.005 × 32768
+// VAD thresholds (dBFS — decibels relative to Int16 full-scale)
+// 0 dBFS = loudest possible signal, more negative = quieter
+const SPEECH_THRESHOLD_DB = -40;   // Speech onset — quiet speech is around -40 to -30 dBFS
+const SILENCE_THRESHOLD_DB = -46;  // Silence gate — below this is considered silence
 const HANGOVER_FRAMES = 30;        // ~300ms silence before speech end
 const PREROLL_FRAMES = 10;         // ~100ms of pre-roll
 
 // Software input gain — amplifies quiet mic hardware (e.g. Intel Smart Sound)
 // Adjust this if the mic is too quiet or too loud
-const INPUT_GAIN = 50;
+const INPUT_GAIN = 3;
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -202,8 +203,10 @@ export class AudioPipeline {
       this.denoised.set(frame);
     }
 
-    // RMS-based VAD (Int16 range)
+    // dB-based VAD
     const rms = calculateRms(this.denoised);
+    const db = rmsToDb(rms);
+
     // Notify per-frame listeners (level meter — normalized for UI)
     this.callbacks.onFrame?.(rms / 32768.0);
 
@@ -216,7 +219,7 @@ export class AudioPipeline {
       this.prerollWrite++;
       this.prerollCount = Math.min(this.prerollCount + 1, PREROLL_FRAMES);
 
-      if (rms > SPEECH_THRESHOLD) {
+      if (db > SPEECH_THRESHOLD_DB) {
         this.speaking = true;
         this.hangover = HANGOVER_FRAMES;
 
@@ -231,7 +234,7 @@ export class AudioPipeline {
     } else {
       this.speechFrames.push(new Float32Array(this.denoised));
 
-      if (rms > SILENCE_THRESHOLD) {
+      if (db > SILENCE_THRESHOLD_DB) {
         this.hangover = HANGOVER_FRAMES;
       } else {
         this.hangover--;
