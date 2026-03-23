@@ -24,7 +24,7 @@ const schema = {
   targetLanguage: { type: 'string' as const, default: 'vi' },
   autoReconnect: { type: 'boolean' as const, default: true },
   ttsGender: { type: 'string' as const, enum: ['male', 'female', 'neutral'], default: 'neutral' },
-  noiseGateDb: { type: 'number' as const, minimum: -60, maximum: -20, default: -50 },
+  noiseGateDb: { type: 'number' as const, minimum: -100, maximum: 0, default: -50 },
 };
 
 // ─── Singleton Instance ────────────────────────────────────────────

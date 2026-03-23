@@ -10,13 +10,15 @@
  *   - Custom RMS-based VAD with hangover + pre-roll
  *
  * RNNoise expects Float32Array frames of 480 samples (10ms @ 48kHz)
- * containing 16-bit PCM values (i.e. values in the range [-32768, 32767]).
+ * containing Int16-scale float values (i.e. [-32768, 32767]).
+ * SINT16 input is read directly into this range — no scaling needed.
  */
 
 import path from 'path';
 import { app } from 'electron';
-import { type RtAudio, RtAudioFormat } from 'audify';
+import { type RtAudio } from 'audify';
 import { getDefaultInputDeviceId, createRtAudio } from './audio-service';
+import { SAMPLE_RATE, FRAME_SIZE, AUDIO_FORMAT, MIC_CHANNELS } from './constants';
 import { getSetting } from './settings-store';
 import type { RNNoise } from '../../../native/rnnoise/index';
 import { calculateRms, rmsToDb } from './utils';
@@ -32,10 +34,6 @@ const rnnoiseNodePath = app.isPackaged
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const rnnoiseAddon = require(rnnoiseNodePath) as { RNNoise: new () => RNNoise };
 
-// ─── Constants ──────────────────────────────────────────────────────────────
-
-const SAMPLE_RATE = 48000;
-const FRAME_SIZE = 480; // 10ms @ 48kHz (RNNoise native frame size)
 
 
 // VAD thresholds (dBFS — decibels relative to Int16 full-scale)
@@ -69,10 +67,6 @@ export class AudioPipeline {
 
   // Pre-allocated scratch buffer — zero per-frame allocations for the hot path
   private denoised = new Float32Array(FRAME_SIZE);
-
-  // Frame accumulation — RtAudio may deliver buffers of varying sizes
-  private frameBuffer = new Float32Array(FRAME_SIZE);
-  private frameIndex = 0;
 
   // VAD state
   private speaking = false;
@@ -112,11 +106,11 @@ export class AudioPipeline {
     this.rtAudio = createRtAudio();
     this.rtAudio.openStream(
       null, // No output
-      { deviceId: resolvedId, nChannels: 1 }, // Mono input
-      RtAudioFormat.RTAUDIO_SINT16, // 16-bit signed int PCM
+      { deviceId: resolvedId, nChannels: MIC_CHANNELS },
+      AUDIO_FORMAT,
       SAMPLE_RATE,
       FRAME_SIZE,
-      'CubieVoice',
+      'main',
       this.onAudioInput.bind(this), // Input callback
       null, // No frame output callback
     );
@@ -153,7 +147,6 @@ export class AudioPipeline {
     this.agc.reset();
     this.speaking = false;
     this.hangover = 0;
-    this.frameIndex = 0;
     this.speechFrames = [];
     this.prerollWrite = 0;
     this.prerollCount = 0;
@@ -170,40 +163,26 @@ export class AudioPipeline {
 
   /**
    * Called by RtAudio when new PCM data is available.
-   * Receives Buffer of mono Int16 PCM samples (nChannels=1).
+   * With RTAUDIO_SINT16, receives Buffer of 16-bit signed integers.
    */
   private onAudioInput(pcmBuffer: Buffer): void {
-    // Direct Int16 → Float32 (mono, no gain — AGC handles amplification)
+    // SINT16: 2 bytes per sample — convert to Float32 in Int16 range
     const sampleCount = pcmBuffer.length / 2;
     const float32 = new Float32Array(sampleCount);
     for (let i = 0; i < sampleCount; i++) {
       float32[i] = pcmBuffer.readInt16LE(i * 2);
     }
-
-    // Accumulate into FRAME_SIZE chunks
-    let offset = 0;
-    while (offset < float32.length) {
-      const remaining = FRAME_SIZE - this.frameIndex;
-      const toCopy = Math.min(remaining, float32.length - offset);
-      this.frameBuffer.set(float32.subarray(offset, offset + toCopy), this.frameIndex);
-      this.frameIndex += toCopy;
-      offset += toCopy;
-
-      if (this.frameIndex === FRAME_SIZE) {
-        this.processFrame(new Float32Array(this.frameBuffer));
-        this.frameIndex = 0;
-      }
-    }
+    this.processFrame(float32);
   }
 
   /**
    * Process a single 480-sample frame through RNNoise + VAD.
-   * Input frame contains raw Int16-range values [-32768, 32767].
+   * Input frame contains Int16-range float values [-32768, 32767].
    */
   private processFrame(frame: Float32Array): void {
     // ── 1. AGC — adaptive gain (replaces static INPUT_GAIN) ──────────────
     const rawRms = calculateRms(frame);
-    const rawDb  = rmsToDb(rawRms);
+    const rawDb = rmsToDb(rawRms);
     const gateDb = getSetting('noiseGateDb');
 
     this.agc.process(frame, rawDb, gateDb);
@@ -212,13 +191,14 @@ export class AudioPipeline {
     // Re-measure after AGC. If still below gate, zero out so RNNoise
     // doesn't amplify faint background noise.
     const postRms = calculateRms(frame);
-    const postDb  = rmsToDb(postRms);
+    const postDb = rmsToDb(postRms);
 
     if (postDb < gateDb) {
       this.denoised.fill(0);
     } else {
       // ── 3. RNNoise denoise ──────────────────────────────────────────
       if (this.rnnoise) {
+        // Data is already in Int16 range — pass directly to RNNoise
         const output = this.rnnoise.process(frame);
         this.denoised.set(output);
       } else {
@@ -230,10 +210,11 @@ export class AudioPipeline {
     const rms = calculateRms(this.denoised);
     const db = rmsToDb(rms);
 
-    // Notify per-frame listeners (level meter — normalized for UI)
+    // Notify per-frame listeners (level meter — normalize to [0, 1] for UI)
     this.callbacks.onFrame?.(rms / 32768.0);
 
     // Notify per-frame listeners (raw denoised audio for speaker output)
+
     this.callbacks.onDenoisedFrame?.(this.denoised);
 
     if (!this.speaking) {

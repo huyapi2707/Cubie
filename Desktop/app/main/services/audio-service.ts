@@ -1,6 +1,6 @@
-import { RtAudio, RtAudioFormat, RtAudioApi } from 'audify';
+import { RtAudio, RtAudioApi } from 'audify';
 import { AudioPipeline } from './audio-pipeline';
-import { SOURCE_SAMPLE_RATE } from './voice-service';
+import { SAMPLE_RATE, FRAME_SIZE, AUDIO_FORMAT, MIC_CHANNELS } from './constants';
 import { calculateRms, rmsToDb } from './utils';
 
 
@@ -80,12 +80,12 @@ function getOutputChannelCount(deviceId: number): number {
 }
 
 /**
- * Extract mono channel 0 from an interleaved stereo Int16 PCM buffer.
+ * Extract mono channel 0 from an interleaved Int16 PCM buffer.
  * Applies a gain multiplier and clamps to Int16 range [-32768, 32767].
  */
 export function extractMonoWithGain(pcmBuffer: Buffer, channels: number, gain: number): Float32Array {
-  const totalInt16Samples = pcmBuffer.length / 2;
-  const monoSamples = totalInt16Samples / channels;
+  const totalSamples = pcmBuffer.length / 2; // 2 bytes per int16
+  const monoSamples = totalSamples / channels;
   const float32 = new Float32Array(monoSamples);
   for (let i = 0; i < monoSamples; i++) {
     const raw = pcmBuffer.readInt16LE(i * channels * 2);
@@ -141,10 +141,10 @@ export function startListen(inputDeviceId: number, outputDeviceId: number): void
     // for duplex streams — we open with matching channels and duplicate if needed.
     listenAudio.openStream(
       { deviceId: outputDeviceId, nChannels: outChannels },
-      { deviceId: inputDeviceId, nChannels: 1 },
-      RtAudioFormat.RTAUDIO_SINT16,
-      SOURCE_SAMPLE_RATE,
-      480,
+      { deviceId: inputDeviceId, nChannels: MIC_CHANNELS },
+      AUDIO_FORMAT,
+      SAMPLE_RATE,
+      FRAME_SIZE,
       'ListenStream',
       (inputData: Buffer) => {
         if (!listenAudio || !listenAudio.isStreamRunning()) return;
@@ -195,9 +195,9 @@ export async function startMicTest(micId: number, speakerId: number, onLevel: (l
     micTestOutput.openStream(
       { deviceId: resolvedSpeakerId, nChannels: micTestOutChannels },
       null,
-      RtAudioFormat.RTAUDIO_SINT16,
-      SOURCE_SAMPLE_RATE,
-      480,
+      AUDIO_FORMAT,
+      SAMPLE_RATE,
+      FRAME_SIZE,
       'MicTestOutput',
       null,
       null,
@@ -258,7 +258,7 @@ export function playPcm(pcm: Float32Array, sampleRate: number, outputDeviceId: n
     rt.openStream(
       { deviceId: outputDeviceId, nChannels: outChannels },
       null,
-      RtAudioFormat.RTAUDIO_SINT16,
+      AUDIO_FORMAT,
       sampleRate,
       frameSize,
       'PcmPlayback',
@@ -313,7 +313,7 @@ export function playPcm(pcm: Float32Array, sampleRate: number, outputDeviceId: n
 // ─── Speaker Test ───────────────────────────────────────────────────────────
 
 export function playSpeakerTest(outputDeviceId: number): void {
-  const sampleRate = SOURCE_SAMPLE_RATE;
+  const sampleRate = SAMPLE_RATE;
   const duration = 0.6;
   const totalSamples = Math.floor(sampleRate * duration);
   const pcm = new Float32Array(totalSamples);
@@ -355,7 +355,6 @@ export function playSpeakerTest(outputDeviceId: number): void {
 // ─── Raw Level Meter (no denoise, no speaker) ───────────────────────────────
 
 const RAW_INPUT_GAIN = 1;       // Unity gain — show true mic level (AGC handles amplification)
-const RAW_FRAME_SIZE = 480;     // 10ms @ 48kHz
 
 let rawLevelAudio: RtAudio | null = null;
 
@@ -370,10 +369,10 @@ export function startRawLevel(micId: number, onLevel: (db: number) => void): voi
     rawLevelAudio = createRtAudio();
     rawLevelAudio.openStream(
       null, // No output
-      { deviceId: micId, nChannels: 1 },
-      RtAudioFormat.RTAUDIO_SINT16,
-      SOURCE_SAMPLE_RATE,
-      RAW_FRAME_SIZE,
+      { deviceId: micId, nChannels: MIC_CHANNELS },
+      AUDIO_FORMAT,
+      SAMPLE_RATE,
+      FRAME_SIZE,
       'RawLevelMeter',
       (pcmBuffer: Buffer) => {
         const mono = extractMonoWithGain(pcmBuffer, 1, RAW_INPUT_GAIN);

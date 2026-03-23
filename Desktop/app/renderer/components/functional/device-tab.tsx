@@ -9,6 +9,7 @@ import { RawLevelMeter } from '@/components/functional/raw-level-meter';
 import { Slider } from '@/components/ui/slider';
 import { useAudioDevices } from '@/hooks';
 import { useAppStore } from '@/store';
+import { NOISE_GATE_MIN_DB, NOISE_GATE_MAX_DB } from '@/lib/constants';
 import { cn } from '@/lib/utils';
 
 // ─── Device Tab ─────────────────────────────────────────────────────────────
@@ -151,8 +152,8 @@ export function DeviceTab() {
                 </p>
                 <Slider
                   id="noise-gate-slider"
-                  min={-60}
-                  max={-20}
+                  min={NOISE_GATE_MIN_DB}
+                  max={NOISE_GATE_MAX_DB}
                   step={1}
                   value={noiseGateDb}
                   onChange={setNoiseGateDb}

@@ -1,4 +1,3 @@
-import { RtAudio, RtAudioApi } from 'audify';
 
 /**
  * Calculate the Root Mean Square (RMS) of a PCM sample buffer.

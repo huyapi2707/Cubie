@@ -14,14 +14,12 @@ import { BrowserWindow } from 'electron';
 import { encodeOpus, decodeOpus, isOpusEncoded } from './opus-codec';
 import { AudioPipeline } from './audio-pipeline';
 import { playPcm } from './audio-service';
+import { SAMPLE_RATE } from './constants';
 import { getSettings } from './settings-store';
 import type { VoiceConfig } from '../../shared/ipc';
 import { IPC_CHANNELS } from '../../shared/ipc';
 import { calculateRms } from './utils';
 
-// ─── Constants ──────────────────────────────────────────────────────────────
-
-export const SOURCE_SAMPLE_RATE = 48000;
 export const SILENCE_THRESHOLD = 0.005;
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -249,10 +247,10 @@ export class MainVoiceService {
       for (let i = 0; i < audio.length; i++) {
         normalized[i] = audio[i] / 32768.0;
       }
-      const opusData = encodeOpus(normalized, SOURCE_SAMPLE_RATE);
+      const opusData = encodeOpus(normalized, SAMPLE_RATE);
       this.ws.send(opusData);
       console.log(
-        `[VoiceService] Sent Opus: ${opusData.byteLength} bytes (${(audio.length / SOURCE_SAMPLE_RATE).toFixed(2)}s)`,
+        `[VoiceService] Sent Opus: ${opusData.byteLength} bytes (${(audio.length / SAMPLE_RATE).toFixed(2)}s)`,
       );
     } catch (err) {
       console.error('[VoiceService] Opus encoding failed:', err);

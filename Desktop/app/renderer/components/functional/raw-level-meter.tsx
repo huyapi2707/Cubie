@@ -1,7 +1,5 @@
 import { useRef, useEffect } from 'react';
-
-const MIN_DB = -60;
-const MAX_DB = -20;
+import { NOISE_GATE_MIN_DB as MIN_DB, NOISE_GATE_MAX_DB as MAX_DB } from '@/lib/constants';
 
 /**
  * Always-on volume meter showing raw (unprocessed) audio level in dBFS.
