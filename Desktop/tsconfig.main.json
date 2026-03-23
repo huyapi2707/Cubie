@@ -4,6 +4,8 @@
     "module": "CommonJS",
     "moduleResolution": "node",
     "lib": ["ES2022"],
+    "types": ["node"],
+    "composite": true,
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
@@ -12,7 +14,7 @@
     "outDir": "dist/main",
     "rootDir": "app",
     "sourceMap": true,
-    "declaration": false,
+    "declaration": true,
     "baseUrl": ".",
     "paths": {
       "@shared/*": ["app/shared/*"]

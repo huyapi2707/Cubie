@@ -210,8 +210,8 @@ export class AudioPipeline {
     const rms = calculateRms(this.denoised);
     const db = rmsToDb(rms);
 
-    // Notify per-frame listeners (level meter — normalize to [0, 1] for UI)
-    this.callbacks.onFrame?.(rms / 32768.0);
+    // Notify per-frame listeners (level meter — already normalized to [0, 1])
+    this.callbacks.onFrame?.(rms);
 
     // Notify per-frame listeners (raw denoised audio for speaker output)
 

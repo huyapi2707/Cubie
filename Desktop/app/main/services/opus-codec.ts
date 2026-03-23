@@ -40,10 +40,11 @@ export function parseSampleRate(data: Buffer | Uint8Array): number {
 /**
  * Encode Float32Array PCM audio into an Opus-framed binary buffer.
  *
- * Converts float32 [-1, 1] → int16 before encoding with OpusScript.
+ * Input is Int16-range Float32 values [-32768, 32767] — the native format
+ * used throughout the audio pipeline. Converts to Int16 buffer for OpusScript.
  */
 export function encodeOpus(pcmFloat32: Float32Array, sampleRate: number): Buffer {
-  // Convert Float32 → Int16
+  // Convert Int16-range Float32 → Int16 buffer (clamp + truncate, no scaling)
   const int16 = float32ToInt16(pcmFloat32);
   const pcm = Buffer.from(int16.buffer, int16.byteOffset, int16.byteLength);
 
@@ -81,8 +82,8 @@ export function encodeOpus(pcmFloat32: Float32Array, sampleRate: number): Buffer
 // ─── Decoding ───────────────────────────────────────────────────────────────
 
 /**
- * Decode an Opus-framed binary message back to Float32Array PCM audio.
- * Returns the decoded samples and the sample rate read from the header.
+ * Decode an Opus-framed binary message back to Int16-range Float32Array PCM audio.
+ * Returns the decoded samples (in [-32768, 32767] range) and the sample rate.
  */
 export function decodeOpus(data: Buffer | Uint8Array): { audio: Float32Array; sampleRate: number } {
   const buf = Buffer.isBuffer(data) ? data : Buffer.from(data);
@@ -147,21 +148,21 @@ function packFrames(frames: Buffer[], sampleRate: number): Buffer {
   return output;
 }
 
+/** Clamp Int16-range float values to Int16 and pack into Int16Array. */
 function float32ToInt16(float32: Float32Array): Int16Array {
   const int16 = new Int16Array(float32.length);
   for (let i = 0; i < float32.length; i++) {
-    const s = Math.max(-1, Math.min(1, float32[i]));
-    int16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+    int16[i] = Math.max(-32768, Math.min(32767, float32[i] | 0));
   }
   return int16;
 }
 
+/** Read Int16 PCM buffer into Float32Array (values stay in Int16 range). */
 function int16ToFloat32(int16Buf: Buffer): Float32Array {
   const sampleCount = int16Buf.length / 2;
   const float32 = new Float32Array(sampleCount);
   for (let i = 0; i < sampleCount; i++) {
-    const sample = int16Buf.readInt16LE(i * 2);
-    float32[i] = sample / (sample < 0 ? 0x8000 : 0x7FFF);
+    float32[i] = int16Buf.readInt16LE(i * 2);
   }
   return float32;
 }

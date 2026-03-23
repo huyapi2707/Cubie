@@ -246,7 +246,7 @@ export function stopMicTest(): void {
 // ─── PCM Playback ───────────────────────────────────────────────────────────
 
 /**
- * Play a mono Float32Array through the specified output device.
+ * Play a mono Float32Array (Int16-range values) through the specified output device.
  * Automatically converts mono → stereo if the device requires it.
  */
 export function playPcm(pcm: Float32Array, sampleRate: number, outputDeviceId: number): void {
@@ -266,17 +266,12 @@ export function playPcm(pcm: Float32Array, sampleRate: number, outputDeviceId: n
       null
     );
 
-    // Convert normalized Float32 [-1,1] → Int16-range Float32Array
-    const int16Pcm = new Float32Array(pcm.length);
-    for (let i = 0; i < pcm.length; i++) {
-      int16Pcm[i] = Math.max(-32768, Math.min(32767, pcm[i] * 32768));
-    }
-
+    // Audio is already in Int16 range — use directly
     let totalFrames = 0;
-    for (let offset = 0; offset < int16Pcm.length; offset += frameSize) {
-      const remaining = int16Pcm.length - offset;
+    for (let offset = 0; offset < pcm.length; offset += frameSize) {
+      const remaining = pcm.length - offset;
       const chunkLen = Math.min(remaining, frameSize);
-      const chunk = int16Pcm.subarray(offset, offset + chunkLen);
+      const chunk = pcm.subarray(offset, offset + chunkLen);
 
       // Pad last chunk if needed
       let frame: Float32Array;
@@ -346,7 +341,7 @@ export function playSpeakerTest(outputDeviceId: number): void {
       sample *= i / 240;
     }
 
-    pcm[i] = sample;
+    pcm[i] = sample * 32767;
   }
 
   playPcm(pcm, sampleRate, outputDeviceId);

@@ -1,5 +1,6 @@
 {
   "compilerOptions": {
+    "composite": true,
     "target": "ES2022",
     "module": "CommonJS",
     "moduleResolution": "node",
@@ -11,7 +12,7 @@
     "outDir": "dist/preload",
     "rootDir": "app/preload",
     "sourceMap": true,
-    "declaration": false
+    "declaration": true
   },
   "include": ["app/preload/**/*"],
   "exclude": ["node_modules"]

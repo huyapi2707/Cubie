@@ -234,20 +234,16 @@ export class MainVoiceService {
   private handleSpeechSegment(audio: Float32Array): void {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
 
-    // Audio is in Int16 range — check RMS in that scale
+    // calculateRms returns normalized [0, 1] — matches SILENCE_THRESHOLD scale
     const rms = calculateRms(audio);
     if (rms < SILENCE_THRESHOLD) {
-      console.log(`[VoiceService] Speech discarded (RMS: ${rms.toFixed(1)})`);
+      console.log(`[VoiceService] Speech discarded (RMS: ${rms.toFixed(4)})`);
       return;
     }
 
     try {
-      // Normalize Int16 → [-1, 1] for Opus encoding
-      const normalized = new Float32Array(audio.length);
-      for (let i = 0; i < audio.length; i++) {
-        normalized[i] = audio[i] / 32768.0;
-      }
-      const opusData = encodeOpus(normalized, SAMPLE_RATE);
+      // Audio is already in Int16 range — encodeOpus accepts it directly
+      const opusData = encodeOpus(audio, SAMPLE_RATE);
       this.ws.send(opusData);
       console.log(
         `[VoiceService] Sent Opus: ${opusData.byteLength} bytes (${(audio.length / SAMPLE_RATE).toFixed(2)}s)`,
