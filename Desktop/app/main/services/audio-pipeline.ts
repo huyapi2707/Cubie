@@ -22,7 +22,7 @@ import { SAMPLE_RATE, FRAME_SIZE, AUDIO_FORMAT, MIC_CHANNELS } from './constants
 import { getSetting } from './settings-store';
 import type { RNNoise } from '../../../native/rnnoise/index';
 import { calculateRms, rmsToDb } from './utils';
-import { AGC } from './agc';
+
 
 // Load the native RNNoise addon (compiled from xiph/rnnoise via N-API)
 // In dev:  __dirname = <project>/dist/main/main/services/ → resolve up to project root
@@ -34,12 +34,8 @@ const rnnoiseNodePath = app.isPackaged
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const rnnoiseAddon = require(rnnoiseNodePath) as { RNNoise: new () => RNNoise };
 
-
-
 // VAD thresholds (dBFS — decibels relative to Int16 full-scale)
-// 0 dBFS = loudest possible signal, more negative = quieter
-const SPEECH_THRESHOLD_DB = -40;   // Speech onset — quiet speech is around -40 to -30 dBFS
-const SILENCE_THRESHOLD_DB = -46;  // Silence gate — below this is considered silence
+
 const HANGOVER_FRAMES = 30;        // ~300ms silence before speech end
 const PREROLL_FRAMES = 10;         // ~100ms of pre-roll
 
@@ -61,12 +57,16 @@ export interface AudioPipelineCallbacks {
 export class AudioPipeline {
   private rtAudio: RtAudio | null = null;
   private rnnoise: RNNoise | null = null;
-  private agc = new AGC();
   private callbacks: AudioPipelineCallbacks;
   private running = false;
 
-  // Pre-allocated scratch buffer — zero per-frame allocations for the hot path
-  private denoised = new Float32Array(FRAME_SIZE);
+
+  private currentNoiseFloor = 0;
+  private snrMargin = 0;
+  private noiseFloorAdjustRate = 0;
+  private dynamicVoiceThreshold = 0;
+
+  private boostUpTarget = 0;
 
   // VAD state
   private speaking = false;
@@ -94,6 +94,13 @@ export class AudioPipeline {
   async start(deviceId: number): Promise<void> {
     if (this.running) return;
 
+    this.currentNoiseFloor = getSetting('noiseGateDb');
+    this.snrMargin = 12;
+    this.noiseFloorAdjustRate = 0.05;
+    this.dynamicVoiceThreshold = this.currentNoiseFloor + this.snrMargin;
+
+    this.boostUpTarget = -18
+
     // 1. Create native RNNoise instance (synchronous — no WASM loading overhead)
     this.rnnoise = new rnnoiseAddon.RNNoise();
     console.log(`[AudioPipeline] Native RNNoise loaded — frame size: ${this.rnnoise.getFrameSize()}`);
@@ -117,6 +124,7 @@ export class AudioPipeline {
 
     this.rtAudio.start();
     this.running = true;
+
     console.log('[AudioPipeline] Started — 48kHz, Native RNNoise → VAD');
   }
 
@@ -143,8 +151,7 @@ export class AudioPipeline {
       this.rnnoise = null;
     }
 
-    // Reset AGC + VAD state
-    this.agc.reset();
+    // Reset VAD state
     this.speaking = false;
     this.hangover = 0;
     this.speechFrames = [];
@@ -180,50 +187,38 @@ export class AudioPipeline {
    * Input frame contains Int16-range float values [-32768, 32767].
    */
   private processFrame(frame: Float32Array): void {
-    // ── 1. AGC — adaptive gain (replaces static INPUT_GAIN) ──────────────
+
     const rawRms = calculateRms(frame);
     const rawDb = rmsToDb(rawRms);
     const gateDb = getSetting('noiseGateDb');
 
-    this.agc.process(frame, rawDb, gateDb);
-
-    // ── 2. Noise gate (post-AGC) ────────────────────────────────────────
-    // Re-measure after AGC. If still below gate, zero out so RNNoise
-    // doesn't amplify faint background noise.
-    const postRms = calculateRms(frame);
-    const postDb = rmsToDb(postRms);
-
-    if (postDb < gateDb) {
-      this.denoised.fill(0);
-    } else {
-      // ── 3. RNNoise denoise ──────────────────────────────────────────
-      if (this.rnnoise) {
-        // Data is already in Int16 range — pass directly to RNNoise
-        const output = this.rnnoise.process(frame);
-        this.denoised.set(output);
-      } else {
-        this.denoised.set(frame);
-      }
+    if (rawDb < gateDb) {
+      this.callbacks.onFrame?.(0);
+      return;
     }
 
-    // dB-based VAD
-    const rms = calculateRms(this.denoised);
-    const db = rmsToDb(rms);
+    let processedFrame = this.boostUp(frame);
 
-    // Notify per-frame listeners (level meter — already normalized to [0, 1])
-    this.callbacks.onFrame?.(rms);
+    if (this.rnnoise){
+      processedFrame = this.rnnoise.process(processedFrame);
+    }
+    
+    const processedRms = calculateRms(processedFrame);
+    const processedDb = rmsToDb(processedRms);
 
-    // Notify per-frame listeners (raw denoised audio for speaker output)
+    this.autoAdjustThresholds(processedDb); 
 
-    this.callbacks.onDenoisedFrame?.(this.denoised);
+    this.callbacks.onDenoisedFrame?.(processedFrame);
+
+    this.callbacks.onFrame?.(processedRms);
 
     if (!this.speaking) {
       // Update pre-roll ring buffer
-      this.preroll[this.prerollWrite % PREROLL_FRAMES].set(this.denoised);
+      this.preroll[this.prerollWrite % PREROLL_FRAMES].set(processedFrame);
       this.prerollWrite++;
       this.prerollCount = Math.min(this.prerollCount + 1, PREROLL_FRAMES);
 
-      if (db > SPEECH_THRESHOLD_DB) {
+      if (processedDb > this.dynamicVoiceThreshold) {
         this.speaking = true;
         this.hangover = HANGOVER_FRAMES;
 
@@ -232,13 +227,13 @@ export class AudioPipeline {
         for (let j = start; j < this.prerollWrite; j++) {
           this.speechFrames.push(new Float32Array(this.preroll[j % PREROLL_FRAMES]));
         }
-        this.speechFrames.push(new Float32Array(this.denoised));
+        this.speechFrames.push(new Float32Array(processedFrame));
         this.callbacks.onSpeechStart?.();
       }
     } else {
-      this.speechFrames.push(new Float32Array(this.denoised));
+      this.speechFrames.push(new Float32Array(processedFrame));
 
-      if (db > SILENCE_THRESHOLD_DB) {
+      if (processedDb > this.dynamicVoiceThreshold) {
         this.hangover = HANGOVER_FRAMES;
       } else {
         this.hangover--;
@@ -266,5 +261,37 @@ export class AudioPipeline {
     this.prerollWrite = 0;
     this.prerollCount = 0;
   }
+
+  private autoAdjustThresholds(dbfs: number): void {
+
+    if (!isFinite(dbfs)) return;
+
+    if (dbfs < this.currentNoiseFloor) {
+      this.currentNoiseFloor -= this.noiseFloorAdjustRate;
+    } else {
+      if (dbfs > this.currentNoiseFloor + this.snrMargin) {
+       this.dynamicVoiceThreshold = this.currentNoiseFloor + this.snrMargin;
+      }
+      else {
+        this.currentNoiseFloor += this.noiseFloorAdjustRate;
+        this.dynamicVoiceThreshold = this.currentNoiseFloor + this.snrMargin; 
+      }
+    }
+  }
+
+  private boostUp(frame: Float32Array): Float32Array {
+    const rms = calculateRms(frame);
+    const db = rmsToDb(rms);
+
+    if (!isFinite(db)) return new Float32Array(frame);
+
+    const gain = Math.pow(10, (this.boostUpTarget - db) / 20);
+    const boostedFrame = new Float32Array(frame.length);
+    for (let i = 0; i < frame.length; i++) {
+      boostedFrame[i] = frame[i] * gain;
+    }
+    return boostedFrame;
+  }
 }
+
 
