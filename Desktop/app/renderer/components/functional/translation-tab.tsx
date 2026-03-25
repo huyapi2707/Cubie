@@ -1,4 +1,4 @@
-import { Languages, User, UserRound } from 'lucide-react';
+import { Languages, User, UserRound, Smile} from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { LanguageSelect } from '@/components/functional/language-select';
@@ -24,7 +24,7 @@ const LANGUAGES = [
 const GENDERS: { value: 'male' | 'female' | 'neutral'; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
   { value: 'male', label: 'Male', icon: User },
   { value: 'female', label: 'Female', icon: UserRound },
-  { value: 'neutral', label: 'Neutral', icon: Languages },
+  { value: 'neutral', label: 'Neutral', icon: Smile },
 ];
 
 export function TranslationTab() {

@@ -61,12 +61,11 @@ export class AudioPipeline {
   private running = false;
 
 
-  private currentNoiseFloor = 0;
-  private snrMargin = 0;
-  private noiseFloorAdjustRate = 0;
-  private dynamicVoiceThreshold = 0;
+  private currentNoiseFloor = getSetting('noiseGateDb');
+  private snrMargin = 15;
+  private dynamicVoiceThreshold = this.currentNoiseFloor + this.snrMargin;
 
-  private boostUpTarget = 0;
+  private boostUpTarget = -20;
 
   // VAD state
   private speaking = false;
@@ -82,6 +81,9 @@ export class AudioPipeline {
 
   // Speech accumulator
   private speechFrames: Float32Array[] = [];
+  private recentDbfs: number[] = [];
+  private recentDbfsNumber = 1000;
+  private reInitFramesNumber = 200 // the first frames are just for adjust threshold
 
   constructor(callbacks: AudioPipelineCallbacks) {
     this.callbacks = callbacks;
@@ -93,13 +95,6 @@ export class AudioPipeline {
    */
   async start(deviceId: number): Promise<void> {
     if (this.running) return;
-
-    this.currentNoiseFloor = getSetting('noiseGateDb');
-    this.snrMargin = 12;
-    this.noiseFloorAdjustRate = 0.05;
-    this.dynamicVoiceThreshold = this.currentNoiseFloor + this.snrMargin;
-
-    this.boostUpTarget = -18
 
     // 1. Create native RNNoise instance (synchronous — no WASM loading overhead)
     this.rnnoise = new rnnoiseAddon.RNNoise();
@@ -151,13 +146,19 @@ export class AudioPipeline {
       this.rnnoise = null;
     }
 
-    // Reset VAD state
+    // Reset all states
     this.speaking = false;
     this.hangover = 0;
     this.speechFrames = [];
     this.prerollWrite = 0;
     this.prerollCount = 0;
     this.running = false;
+    this.recentDbfs = [];
+    this.currentNoiseFloor = getSetting('noiseGateDb');
+    this.snrMargin = 15;
+    this.dynamicVoiceThreshold = this.currentNoiseFloor + this.snrMargin;
+    this.boostUpTarget = -20
+
 
     console.log('[AudioPipeline] Stopped');
   }
@@ -208,8 +209,11 @@ export class AudioPipeline {
 
     this.autoAdjustThresholds(processedDb); 
 
-    this.callbacks.onDenoisedFrame?.(processedFrame);
+    // console.log('[AudioPipeline] Noise floor: ', this.currentNoiseFloor);
+    // console.log('[AudioPipeline] Processed dB: ', processedDb);
+    // console.log('[AudioPipeline] Threshold: ', this.dynamicVoiceThreshold);  
 
+    this.callbacks.onDenoisedFrame?.(processedFrame);
     this.callbacks.onFrame?.(processedRms);
 
     if (!this.speaking) {
@@ -229,6 +233,10 @@ export class AudioPipeline {
         }
         this.speechFrames.push(new Float32Array(processedFrame));
         this.callbacks.onSpeechStart?.();
+        console.log('[AudioPipeline] Speech started');
+        console.log('[Speech started] Noise floor: ', this.currentNoiseFloor);
+        console.log('[Speech started] ProcessedFrame: ', processedDb);
+        console.log('[Speech started] Threshold: ', this.dynamicVoiceThreshold);
       }
     } else {
       this.speechFrames.push(new Float32Array(processedFrame));
@@ -238,6 +246,7 @@ export class AudioPipeline {
       } else {
         this.hangover--;
         if (this.hangover <= 0) {
+          console.log('[AudioPipeline] Speech ended');
           this.endSpeech();
         }
       }
@@ -262,21 +271,24 @@ export class AudioPipeline {
     this.prerollCount = 0;
   }
 
-  private autoAdjustThresholds(dbfs: number): void {
+  private autoAdjustThresholds(boostDbfs: number): void {
+    if (!isFinite(boostDbfs)) return;
 
-    if (!isFinite(dbfs)) return;
+    if (this.recentDbfs.length > this.recentDbfsNumber) {
+      this.recentDbfs.shift();
+    }
+    this.recentDbfs.push(boostDbfs);
 
-    if (dbfs < this.currentNoiseFloor) {
-      this.currentNoiseFloor -= this.noiseFloorAdjustRate;
+    if (this.recentDbfs.length < this.reInitFramesNumber) {
+      this.currentNoiseFloor = Math.max(...this.recentDbfs)
+      this.dynamicVoiceThreshold = Math.min(...this.recentDbfs)
     } else {
-      if (dbfs > this.currentNoiseFloor + this.snrMargin) {
-       this.dynamicVoiceThreshold = this.currentNoiseFloor + this.snrMargin;
-      }
-      else {
-        this.currentNoiseFloor += this.noiseFloorAdjustRate;
+      this.currentNoiseFloor = this.recentDbfs.reduce((a, b) => a + b, 0) / this.recentDbfs.length;
+      if (boostDbfs > this.currentNoiseFloor + this.snrMargin) {
         this.dynamicVoiceThreshold = this.currentNoiseFloor + this.snrMargin; 
       }
     }
+
   }
 
   private boostUp(frame: Float32Array): Float32Array {

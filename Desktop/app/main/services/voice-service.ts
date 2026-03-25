@@ -210,7 +210,6 @@ export class MainVoiceService {
     try {
       this.pipeline = new AudioPipeline({
         onSpeechStart: () => {
-          console.log('[VoiceService] Speech started');
         },
         onSpeechEnd: (audio: Float32Array) => {
           this.handleSpeechSegment(audio);
