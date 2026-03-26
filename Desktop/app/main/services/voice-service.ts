@@ -14,13 +14,10 @@ import { BrowserWindow } from 'electron';
 import { encodeOpus, decodeOpus, isOpusEncoded } from './opus-codec';
 import { AudioPipeline } from './audio-pipeline';
 import { playPcm } from './audio-service';
-import { SAMPLE_RATE } from './constants';
 import { getSettings } from './settings-store';
 import type { VoiceConfig } from '../../shared/ipc';
 import { IPC_CHANNELS } from '../../shared/ipc';
-import { calculateRms } from './utils';
 
-export const SILENCE_THRESHOLD = 0.005;
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -223,9 +220,9 @@ export class MainVoiceService {
     }
   }
 
-  private stopAudioPipeline(): void {
+  private async stopAudioPipeline(): Promise<void> {
     if (this.pipeline) {
-      this.pipeline.stop();
+      await this.pipeline.stop();
       this.pipeline = null;
     }
   }
@@ -233,19 +230,13 @@ export class MainVoiceService {
   private handleSpeechSegment(audio: Float32Array): void {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
 
-    // calculateRms returns normalized [0, 1] — matches SILENCE_THRESHOLD scale
-    const rms = calculateRms(audio);
-    if (rms < SILENCE_THRESHOLD) {
-      console.log(`[VoiceService] Speech discarded (RMS: ${rms.toFixed(4)})`);
-      return;
-    }
-
     try {
-      // Audio is already in Int16 range — encodeOpus accepts it directly
-      const opusData = encodeOpus(audio, SAMPLE_RATE);
+      // Encode at 16kHz (avr-vad resamples 48kHz → 16kHz internally)
+      const VAD_SAMPLE_RATE = 16000;
+      const opusData = encodeOpus(audio, VAD_SAMPLE_RATE);
       this.ws.send(opusData);
       console.log(
-        `[VoiceService] Sent Opus: ${opusData.byteLength} bytes (${(audio.length / SAMPLE_RATE).toFixed(2)}s)`,
+        `[VoiceService] Sent Opus: ${opusData.byteLength} bytes (${(audio.length / VAD_SAMPLE_RATE).toFixed(2)}s)`,
       );
     } catch (err) {
       console.error('[VoiceService] Opus encoding failed:', err);

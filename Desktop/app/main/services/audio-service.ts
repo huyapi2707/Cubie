@@ -226,9 +226,9 @@ export async function startMicTest(micId: number, speakerId: number, onLevel: (l
   }
 }
 
-export function stopMicTest(): void {
+export async function stopMicTest(): Promise<void> {
   if (micTestPipeline) {
-    micTestPipeline.stop();
+    await micTestPipeline.stop();
     micTestPipeline = null;
   }
   if (micTestOutput) {

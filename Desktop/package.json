@@ -27,6 +27,7 @@
   },
   "dependencies": {
     "audify": "^1.10.1",
+    "avr-vad": "^1.0.9",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "electron-store": "^8.2.0",

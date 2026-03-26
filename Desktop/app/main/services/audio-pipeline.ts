@@ -2,26 +2,31 @@
  * Audio Pipeline — Main Process
  *
  * Complete audio capture and processing pipeline running in Node.js:
- *   Mic (RtAudio) → Native RNNoise (denoise) → VAD (RMS-based) → Speech segments
+ *   Mic (RtAudio) → Native RNNoise (denoise) → Silero VAD (avr-vad) → Speech segments
  *
  * Uses:
  *   - audify (RtAudio) for native mic capture at 48kHz
  *   - Native RNNoise C addon (N-API) for noise suppression
- *   - Custom RMS-based VAD with hangover + pre-roll
+ *   - avr-vad (Silero VAD v5) for neural-network-based voice activity detection
  *
  * RNNoise expects Float32Array frames of 480 samples (10ms @ 48kHz)
  * containing Int16-scale float values (i.e. [-32768, 32767]).
  * SINT16 input is read directly into this range — no scaling needed.
+ *
+ * avr-vad expects normalized Float32 [-1.0, 1.0] and handles resampling
+ * from 48kHz → 16kHz internally. It manages pre-roll, hangover
+ * (redemption frames), and speech accumulation.
  */
 
 import path from 'path';
 import { app } from 'electron';
 import { type RtAudio } from 'audify';
+import { RealTimeVAD } from 'avr-vad';
 import { getDefaultInputDeviceId, createRtAudio } from './audio-service';
 import { SAMPLE_RATE, FRAME_SIZE, AUDIO_FORMAT, MIC_CHANNELS } from './constants';
 import { getSetting } from './settings-store';
 import type { RNNoise } from '../../../native/rnnoise/index';
-import { calculateRms, rmsToDb } from './utils';
+import { calculateRms, rmsToDb, normalizeInt16, denormalizeInt16 } from './utils';
 
 
 // Load the native RNNoise addon (compiled from xiph/rnnoise via N-API)
@@ -33,13 +38,6 @@ const rnnoiseNodePath = app.isPackaged
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const rnnoiseAddon = require(rnnoiseNodePath) as { RNNoise: new () => RNNoise };
-
-// VAD thresholds (dBFS — decibels relative to Int16 full-scale)
-
-const HANGOVER_FRAMES = 30;        // ~300ms silence before speech end
-const PREROLL_FRAMES = 10;         // ~100ms of pre-roll
-
-// Software gain is now handled by AGC (see agc.ts) — no static multiplier
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -57,33 +55,11 @@ export interface AudioPipelineCallbacks {
 export class AudioPipeline {
   private rtAudio: RtAudio | null = null;
   private rnnoise: RNNoise | null = null;
+  private vad: RealTimeVAD | null = null;
   private callbacks: AudioPipelineCallbacks;
   private running = false;
 
-
-  private currentNoiseFloor = getSetting('noiseGateDb');
-  private snrMargin = 15;
-  private dynamicVoiceThreshold = this.currentNoiseFloor + this.snrMargin;
-
   private boostUpTarget = -20;
-
-  // VAD state
-  private speaking = false;
-  private hangover = 0;
-
-  // Pre-roll ring buffer
-  private preroll: Float32Array[] = Array.from(
-    { length: PREROLL_FRAMES },
-    () => new Float32Array(FRAME_SIZE),
-  );
-  private prerollWrite = 0;
-  private prerollCount = 0;
-
-  // Speech accumulator
-  private speechFrames: Float32Array[] = [];
-  private recentDbfs: number[] = [];
-  private recentDbfsNumber = 1000;
-  private reInitFramesNumber = 200 // the first frames are just for adjust threshold
 
   constructor(callbacks: AudioPipelineCallbacks) {
     this.callbacks = callbacks;
@@ -100,11 +76,46 @@ export class AudioPipeline {
     this.rnnoise = new rnnoiseAddon.RNNoise();
     console.log(`[AudioPipeline] Native RNNoise loaded — frame size: ${this.rnnoise.getFrameSize()}`);
 
-    // 2. Use the provided device ID (fall back to default if 0 or invalid)
+    // 2. Initialize Silero VAD via avr-vad
+    //    - sampleRate: 48kHz (avr-vad resamples to 16kHz internally)
+    //    - redemptionFrames: grace period before speech-end (~8 × 96ms ≈ 768ms hangover)
+    //    - preSpeechPadFrames: pre-roll frames prepended to speech segment
+    this.vad = await RealTimeVAD.new({
+      model: 'v5',
+      sampleRate: SAMPLE_RATE,
+      positiveSpeechThreshold: 0.5,
+      negativeSpeechThreshold: 0.35,
+      redemptionFrames: 8,
+      preSpeechPadFrames: 1,
+      minSpeechFrames: 3,
+      onSpeechStart: () => {
+        console.log('[AudioPipeline] Silero VAD — Speech started');
+        this.callbacks.onSpeechStart?.();
+      },
+      onSpeechEnd: (audio: Float32Array) => {
+        console.log(`[AudioPipeline] Silero VAD — Speech ended (${audio.length} samples)`);
+        // avr-vad delivers normalized [-1, 1] audio at 16kHz.
+        // Denormalize back to Int16 range for downstream consumers.
+        this.callbacks.onSpeechEnd?.(denormalizeInt16(audio));
+      },
+      onFrameProcessed: (probs, _frame) => {
+        console.log(`[VAD] prob=${probs.isSpeech.toFixed(3)}`);
+      },
+      onSpeechRealStart: () => {
+        // Fired after minSpeechFrames confirms it's real speech (not a misfire)
+      },
+      onVADMisfire: () => {
+        console.log('[AudioPipeline] Silero VAD — Misfire (too short, discarded)');
+      },
+    });
+    this.vad.start();
+    console.log('[AudioPipeline] Silero VAD initialized (v5, 48kHz → 16kHz)');
+
+    // 3. Use the provided device ID (fall back to default if 0 or invalid)
     const resolvedId = deviceId > 0 ? deviceId : getDefaultInputDeviceId();
     console.log(`[AudioPipeline] Using input device id: ${resolvedId}`);
 
-    // 3. Open RtAudio input stream (stereo capture)
+    // 4. Open RtAudio input stream
     this.rtAudio = createRtAudio();
     this.rtAudio.openStream(
       null, // No output
@@ -120,13 +131,13 @@ export class AudioPipeline {
     this.rtAudio.start();
     this.running = true;
 
-    console.log('[AudioPipeline] Started — 48kHz, Native RNNoise → VAD');
+    console.log('[AudioPipeline] Started — 48kHz, Native RNNoise → Silero VAD');
   }
 
   /**
    * Stop the pipeline and release resources.
    */
-  stop(): void {
+  async stop(): Promise<void> {
     if (!this.running) return;
 
     try {
@@ -146,19 +157,15 @@ export class AudioPipeline {
       this.rnnoise = null;
     }
 
-    // Reset all states
-    this.speaking = false;
-    this.hangover = 0;
-    this.speechFrames = [];
-    this.prerollWrite = 0;
-    this.prerollCount = 0;
-    this.running = false;
-    this.recentDbfs = [];
-    this.currentNoiseFloor = getSetting('noiseGateDb');
-    this.snrMargin = 15;
-    this.dynamicVoiceThreshold = this.currentNoiseFloor + this.snrMargin;
-    this.boostUpTarget = -20
+    // Flush any pending speech segment and destroy VAD
+    if (this.vad) {
+      await this.vad.flush();
+      this.vad.destroy();
+      this.vad = null;
+    }
 
+    this.running = false;
+    this.boostUpTarget = -20;
 
     console.log('[AudioPipeline] Stopped');
   }
@@ -184,7 +191,7 @@ export class AudioPipeline {
   }
 
   /**
-   * Process a single 480-sample frame through RNNoise + VAD.
+   * Process a single 480-sample frame through RNNoise + Silero VAD.
    * Input frame contains Int16-range float values [-32768, 32767].
    */
   private processFrame(frame: Float32Array): void {
@@ -193,6 +200,7 @@ export class AudioPipeline {
     const rawDb = rmsToDb(rawRms);
     const gateDb = getSetting('noiseGateDb');
 
+    // Hard noise gate — skip extremely quiet frames
     if (rawDb < gateDb) {
       this.callbacks.onFrame?.(0);
       return;
@@ -200,95 +208,23 @@ export class AudioPipeline {
 
     let processedFrame = this.boostUp(frame);
 
-    if (this.rnnoise){
-      processedFrame = this.rnnoise.process(processedFrame);
-    }
-    
+    processedFrame = this.rnnoise?.process(processedFrame) || processedFrame;
+
     const processedRms = calculateRms(processedFrame);
-    const processedDb = rmsToDb(processedRms);
-
-    this.autoAdjustThresholds(processedDb); 
-
-    // console.log('[AudioPipeline] Noise floor: ', this.currentNoiseFloor);
-    // console.log('[AudioPipeline] Processed dB: ', processedDb);
-    // console.log('[AudioPipeline] Threshold: ', this.dynamicVoiceThreshold);  
 
     this.callbacks.onDenoisedFrame?.(processedFrame);
     this.callbacks.onFrame?.(processedRms);
 
-    if (!this.speaking) {
-      // Update pre-roll ring buffer
-      this.preroll[this.prerollWrite % PREROLL_FRAMES].set(processedFrame);
-      this.prerollWrite++;
-      this.prerollCount = Math.min(this.prerollCount + 1, PREROLL_FRAMES);
+    if (this.callbacks.onSpeechStart || this.callbacks.onSpeechEnd) {
+      // Normalize Int16-range → [-1.0, 1.0] for Silero VAD
+      const normalized = normalizeInt16(processedFrame);
 
-      if (processedDb > this.dynamicVoiceThreshold) {
-        this.speaking = true;
-        this.hangover = HANGOVER_FRAMES;
-
-        // Flush pre-roll into speech buffer
-        const start = this.prerollWrite - this.prerollCount;
-        for (let j = start; j < this.prerollWrite; j++) {
-          this.speechFrames.push(new Float32Array(this.preroll[j % PREROLL_FRAMES]));
-        }
-        this.speechFrames.push(new Float32Array(processedFrame));
-        this.callbacks.onSpeechStart?.();
-        console.log('[AudioPipeline] Speech started');
-        console.log('[Speech started] Noise floor: ', this.currentNoiseFloor);
-        console.log('[Speech started] ProcessedFrame: ', processedDb);
-        console.log('[Speech started] Threshold: ', this.dynamicVoiceThreshold);
-      }
-    } else {
-      this.speechFrames.push(new Float32Array(processedFrame));
-
-      if (processedDb > this.dynamicVoiceThreshold) {
-        this.hangover = HANGOVER_FRAMES;
-      } else {
-        this.hangover--;
-        if (this.hangover <= 0) {
-          console.log('[AudioPipeline] Speech ended');
-          this.endSpeech();
-        }
-      }
+      // Feed to Silero VAD (async but we fire-and-forget from the audio callback)
+      this.vad?.processAudio(normalized).catch((err) => {
+        console.error('[AudioPipeline] VAD processAudio error:', err);
+      });
     }
-  }
-
-  private endSpeech(): void {
-    this.speaking = false;
-
-    // Concatenate all speech frames
-    const total = this.speechFrames.length * FRAME_SIZE;
-    const audio = new Float32Array(total);
-    for (let i = 0; i < this.speechFrames.length; i++) {
-      audio.set(this.speechFrames[i], i * FRAME_SIZE);
-    }
-
-    this.callbacks.onSpeechEnd?.(audio);
-
-    // Reset
-    this.speechFrames = [];
-    this.prerollWrite = 0;
-    this.prerollCount = 0;
-  }
-
-  private autoAdjustThresholds(boostDbfs: number): void {
-    if (!isFinite(boostDbfs)) return;
-
-    if (this.recentDbfs.length > this.recentDbfsNumber) {
-      this.recentDbfs.shift();
-    }
-    this.recentDbfs.push(boostDbfs);
-
-    if (this.recentDbfs.length < this.reInitFramesNumber) {
-      this.currentNoiseFloor = Math.max(...this.recentDbfs)
-      this.dynamicVoiceThreshold = Math.min(...this.recentDbfs)
-    } else {
-      this.currentNoiseFloor = this.recentDbfs.reduce((a, b) => a + b, 0) / this.recentDbfs.length;
-      if (boostDbfs > this.currentNoiseFloor + this.snrMargin) {
-        this.dynamicVoiceThreshold = this.currentNoiseFloor + this.snrMargin; 
-      }
-    }
-
+    
   }
 
   private boostUp(frame: Float32Array): Float32Array {
@@ -305,5 +241,6 @@ export class AudioPipeline {
     return boostedFrame;
   }
 }
+
 
 

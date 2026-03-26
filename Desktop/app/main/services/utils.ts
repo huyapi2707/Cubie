@@ -25,3 +25,25 @@ export function rmsToDb(rms: number): number {
   return 20 * Math.log10(rms);
 }
 
+/**
+ * Normalize Int16-range Float32 values [-32768, 32767] to [-1.0, 1.0].
+ */
+export function normalizeInt16(samples: Float32Array): Float32Array {
+  const out = new Float32Array(samples.length);
+  for (let i = 0; i < samples.length; i++) {
+    out[i] = samples[i] / 32768;
+  }
+  return out;
+}
+
+/**
+ * Denormalize [-1.0, 1.0] Float32 values back to Int16-range [-32768, 32767].
+ * Values are clamped to prevent overflow.
+ */
+export function denormalizeInt16(samples: Float32Array): Float32Array {
+  const out = new Float32Array(samples.length);
+  for (let i = 0; i < samples.length; i++) {
+    out[i] = Math.max(-32768, Math.min(32767, samples[i] * 32768));
+  }
+  return out;
+}
