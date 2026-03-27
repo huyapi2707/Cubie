@@ -1,5 +1,9 @@
 import { WorkerPool } from "../workers/worker-pool.js";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { createChildLogger, metrics } from "../utils/index.js";
+import { config } from "../config/index.js";
 import type {
   SttResult,
   TranslateResult,
@@ -7,6 +11,16 @@ import type {
 } from "../types/worker.js";
 
 const log = createChildLogger({ module: "audio-pipeline" });
+const isDev = config.NODE_ENV === "development";
+
+// DEV ONLY: resolve test/audio dir for saving debug audio files
+let AUDIO_DEBUG_DIR = "";
+let audioSeq = 0;
+if (isDev) {
+  const __dirname = path.dirname(fileURLToPath(import.meta.url));
+  AUDIO_DEBUG_DIR = path.resolve(__dirname, "..", "..", "test", "audio");
+  fs.mkdirSync(AUDIO_DEBUG_DIR, { recursive: true });
+}
 
 /**
  * Orchestrates the audio processing pipeline:
@@ -138,6 +152,16 @@ export class AudioPipelineService {
   ): Promise<PipelineResult> {
     const startTime = Date.now();
 
+    // DEV ONLY: save received audio as .wav for easy playback on Windows
+    if (isDev) {
+      const rate = sampleRate ?? 16000;
+      const filename = `${Date.now()}_${audioSeq++}_${rate}hz.wav`;
+      const filepath = path.join(AUDIO_DEBUG_DIR, filename);
+      const wavHeader = buildWavHeader(audioBuffer.length, rate, 1, 16);
+      fs.writeFileSync(filepath, Buffer.concat([wavHeader, audioBuffer]));
+      log.info({ filepath, bytes: audioBuffer.length }, "Saved debug audio to file");
+    }
+
     const pipelineResult: PipelineResult = {
       stt: null,
       translation: null,
@@ -205,4 +229,27 @@ export interface PipelineResult {
   translation: TranslateResult | null;
   tts: TtsResult | null;
   durationMs: number;
+}
+
+/** Build a 44-byte RIFF/WAVE header for raw PCM (LINEAR16) data. */
+function buildWavHeader(dataSize: number, sampleRate: number, channels: number, bitsPerSample: number): Buffer {
+  const byteRate = sampleRate * channels * (bitsPerSample / 8);
+  const blockAlign = channels * (bitsPerSample / 8);
+  const header = Buffer.alloc(44);
+
+  header.write("RIFF", 0);                          // ChunkID
+  header.writeUInt32LE(36 + dataSize, 4);            // ChunkSize
+  header.write("WAVE", 8);                           // Format
+  header.write("fmt ", 12);                          // Subchunk1ID
+  header.writeUInt32LE(16, 16);                      // Subchunk1Size (PCM)
+  header.writeUInt16LE(1, 20);                       // AudioFormat (1 = PCM)
+  header.writeUInt16LE(channels, 22);                // NumChannels
+  header.writeUInt32LE(sampleRate, 24);              // SampleRate
+  header.writeUInt32LE(byteRate, 28);                // ByteRate
+  header.writeUInt16LE(blockAlign, 32);              // BlockAlign
+  header.writeUInt16LE(bitsPerSample, 34);           // BitsPerSample
+  header.write("data", 36);                          // Subchunk2ID
+  header.writeUInt32LE(dataSize, 40);                // Subchunk2Size
+
+  return header;
 }

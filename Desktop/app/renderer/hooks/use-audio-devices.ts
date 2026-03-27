@@ -11,8 +11,8 @@ export interface AudioDevice {
  * via the main process (audify RtAudio).
  */
 export function useAudioDevices() {
-  const [inputDevices, setInputDevices] = useState<AudioDevice[]>([]);
-  const [outputDevices, setOutputDevices] = useState<AudioDevice[]>([]);
+  const [microphones, setMicrophones] = useState<AudioDevice[]>([]);
+  const [speakers, setSpeakers] = useState<AudioDevice[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -24,14 +24,14 @@ export function useAudioDevices() {
     
       // Map RtAudio device info → AudioDevice shape used by comboboxes
       // Main process returns { id: number; name: string } per device
-      setInputDevices(
+      setMicrophones(
         inputs.map((d: { id: number; name: string }) => ({
           deviceId: String(d.id),
           label: d.name,
           groupId: '',
         })),
       );
-      setOutputDevices(
+      setSpeakers(
         outputs.map((d: { id: number; name: string }) => ({
           deviceId: String(d.id),
           label: d.name,
@@ -40,8 +40,8 @@ export function useAudioDevices() {
       );
     } catch (err) {
       setError((err as Error).message);
-      setInputDevices([]);
-      setOutputDevices([]);
+      setMicrophones([]);
+      setSpeakers([]);
     } finally {
       setLoading(false);
     }
@@ -51,5 +51,5 @@ export function useAudioDevices() {
     enumerate();
   }, [enumerate]);
 
-  return { inputDevices, outputDevices, loading, error, refresh: enumerate };
+  return { microphones, speakers, loading, error, refresh: enumerate };
 }

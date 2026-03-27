@@ -13,7 +13,7 @@ import WebSocket from 'ws';
 import { BrowserWindow } from 'electron';
 import { encodeOpus, decodeOpus, isOpusEncoded } from './opus-codec';
 import { AudioPipeline } from './audio-pipeline';
-import { playPcm } from './audio-service';
+import { startVirtualMicOutput, writeToVirtualMic, stopVirtualMicOutput } from './audio-service';
 import { getSettings } from './settings-store';
 import type { VoiceConfig } from '../../shared/ipc';
 import { IPC_CHANNELS } from '../../shared/ipc';
@@ -186,10 +186,9 @@ export class MainVoiceService {
       if (isOpusEncoded(data)) {
         const { audio, sampleRate } = decodeOpus(data);
 
-        // Play TTS audio directly in main process — no renderer round-trip
-        const settings = getSettings();
-        const outputDeviceId = Number(settings.outMicId) || 0;
-        playPcm(audio, sampleRate, outputDeviceId);
+        // Write TTS audio to the virtual output mic
+        console.log('[VoiceService] Writing TTS audio to virtual mic:', audio.length, 'samples');
+        writeToVirtualMic(audio);
       } else {
         console.warn('[VoiceService] Received unknown binary message');
       }
@@ -215,6 +214,12 @@ export class MainVoiceService {
 
       await this.pipeline.start(deviceId);
       console.log('[VoiceService] Audio pipeline started');
+
+      // Open persistent output stream to virtual mic
+      const outMicId = Number(settings.outMicId) || 0;
+      if (outMicId > 0) {
+        startVirtualMicOutput(outMicId);
+      }
     } catch (err) {
       console.error('[VoiceService] Failed to start audio pipeline:', err);
     }
@@ -225,6 +230,7 @@ export class MainVoiceService {
       await this.pipeline.stop();
       this.pipeline = null;
     }
+    stopVirtualMicOutput();
   }
 
   private handleSpeechSegment(audio: Float32Array): void {

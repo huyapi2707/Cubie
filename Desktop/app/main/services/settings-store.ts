@@ -13,6 +13,7 @@ const DEFAULTS: UserSettings = {
   autoReconnect: true,
   ttsGender: 'neutral',
   noiseGateDb: -50,
+  boostUpRate: 1,
 };
 
 const schema = {
@@ -25,6 +26,7 @@ const schema = {
   autoReconnect: { type: 'boolean' as const, default: true },
   ttsGender: { type: 'string' as const, enum: ['male', 'female', 'neutral'], default: 'neutral' },
   noiseGateDb: { type: 'number' as const, minimum: -100, maximum: 0, default: -50 },
+  boostUpRate: { type: 'number' as const, minimum: 1, maximum: 100, default: 1 },
 };
 
 // ─── Singleton Instance ────────────────────────────────────────────
@@ -48,6 +50,7 @@ export function getSettings(): UserSettings {
     autoReconnect: store.get('autoReconnect'),
     ttsGender: store.get('ttsGender') as 'male' | 'female' | 'neutral',
     noiseGateDb: store.get('noiseGateDb'),
+    boostUpRate: store.get('boostUpRate'),
   };
 }
 

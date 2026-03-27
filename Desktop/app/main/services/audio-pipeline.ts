@@ -59,8 +59,6 @@ export class AudioPipeline {
   private callbacks: AudioPipelineCallbacks;
   private running = false;
 
-  private boostUpTarget = -20;
-
   constructor(callbacks: AudioPipelineCallbacks) {
     this.callbacks = callbacks;
   }
@@ -99,7 +97,6 @@ export class AudioPipeline {
         this.callbacks.onSpeechEnd?.(denormalizeInt16(audio));
       },
       onFrameProcessed: (probs, _frame) => {
-        console.log(`[VAD] prob=${probs.isSpeech.toFixed(3)}`);
       },
       onSpeechRealStart: () => {
         // Fired after minSpeechFrames confirms it's real speech (not a misfire)
@@ -165,7 +162,6 @@ export class AudioPipeline {
     }
 
     this.running = false;
-    this.boostUpTarget = -20;
 
     console.log('[AudioPipeline] Stopped');
   }
@@ -215,28 +211,24 @@ export class AudioPipeline {
     this.callbacks.onDenoisedFrame?.(processedFrame);
     this.callbacks.onFrame?.(processedRms);
 
-    if (this.callbacks.onSpeechStart || this.callbacks.onSpeechEnd) {
+    if ((this.callbacks.onSpeechStart || this.callbacks.onSpeechEnd) || true) {
       // Normalize Int16-range → [-1.0, 1.0] for Silero VAD
       const normalized = normalizeInt16(processedFrame);
-
       // Feed to Silero VAD (async but we fire-and-forget from the audio callback)
       this.vad?.processAudio(normalized).catch((err) => {
         console.error('[AudioPipeline] VAD processAudio error:', err);
       });
     }
-    
+
   }
 
   private boostUp(frame: Float32Array): Float32Array {
-    const rms = calculateRms(frame);
-    const db = rmsToDb(rms);
+    const rate = getSetting('boostUpRate');
+    if (rate <= 1) return frame;
 
-    if (!isFinite(db)) return new Float32Array(frame);
-
-    const gain = Math.pow(10, (this.boostUpTarget - db) / 20);
     const boostedFrame = new Float32Array(frame.length);
     for (let i = 0; i < frame.length; i++) {
-      boostedFrame[i] = frame[i] * gain;
+      boostedFrame[i] = frame[i] * rate;
     }
     return boostedFrame;
   }

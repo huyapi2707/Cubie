@@ -8,8 +8,8 @@
 import { BrowserWindow, ipcMain } from 'electron';
 import { IPC_CHANNELS } from '../../shared/ipc';
 import {
-  listInputDevices,
-  listOutputDevices,
+  listMicrophones,
+  listSpeakers,
   startListen,
   stopListen,
   startMicTest,
@@ -24,8 +24,8 @@ export function registerAudioHandlers(): void {
   // Device enumeration
   ipcMain.handle(IPC_CHANNELS.AUDIO_GET_DEVICES, () => {
     return {
-      inputs: listInputDevices(),
-      outputs: listOutputDevices(),
+      inputs: listMicrophones(),
+      outputs: listSpeakers(),
     };
   });
 

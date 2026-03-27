@@ -9,7 +9,7 @@ import { RawLevelMeter } from '@/components/functional/raw-level-meter';
 import { Slider } from '@/components/ui/slider';
 import { useAudioDevices } from '@/hooks';
 import { useAppStore } from '@/store';
-import { NOISE_GATE_MIN_DB, NOISE_GATE_MAX_DB } from '@/lib/constants';
+import { NOISE_GATE_MIN_DB, NOISE_GATE_MAX_DB, BOOST_UP_MIN, BOOST_UP_MAX, BOOST_UP_STEP } from '@/lib/constants';
 import { cn } from '@/lib/utils';
 
 // ─── Device Tab ─────────────────────────────────────────────────────────────
@@ -23,7 +23,9 @@ export function DeviceTab() {
   const setSpeaker = useAppStore((s) => s.setSpeaker);
   const noiseGateDb = useAppStore((s) => s.noiseGateDb);
   const setNoiseGateDb = useAppStore((s) => s.setNoiseGateDb);
-  const { inputDevices, outputDevices, loading, error, refresh } = useAudioDevices();
+  const boostUpRate = useAppStore((s) => s.boostUpRate);
+  const setBoostUpRate = useAppStore((s) => s.setBoostUpRate);
+  const { microphones, speakers, loading, error, refresh } = useAudioDevices();
 
   return (
     <div className="space-y-6">
@@ -72,7 +74,7 @@ export function DeviceTab() {
                   The microphone used to capture your voice
                 </p>
                 <DeviceCombobox
-                  devices={inputDevices}
+                  devices={microphones}
                   loading={loading}
                   selectedId={inMicId}
                   onSelect={(id) => setMicrophone(id)}
@@ -91,7 +93,7 @@ export function DeviceTab() {
                   The virtual microphone for translated audio output
                 </p>
                 <DeviceCombobox
-                  devices={inputDevices}
+                  devices={microphones}
                   loading={loading}
                   selectedId={outMicId}
                   onSelect={(id) => setOutputMic(id)}
@@ -118,7 +120,7 @@ export function DeviceTab() {
                   The speaker used to play translated audio
                 </p>
                 <DeviceCombobox
-                  devices={outputDevices}
+                  devices={speakers}
                   loading={loading}
                   selectedId={outSpeakerId}
                   onSelect={(id) => setSpeaker(id)}
@@ -135,9 +137,9 @@ export function DeviceTab() {
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
                 <ShieldCheck className="h-4 w-4" />
-                Voice Sensitivity
+                Audio Quality
               </CardTitle>
-              <CardDescription>Control how much sound is captured from your microphone</CardDescription>
+              <CardDescription>Control the quality of the audio captured from your microphone</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-3">
@@ -166,6 +168,33 @@ export function DeviceTab() {
 
               {/* Raw volume meter for calibration */}
               {inMicId && <RawLevelMeter micId={Number(inMicId)} />}
+
+              <Separator />
+
+              {/* Boost Up Rate */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <label className="text-sm font-medium">Boost Up Rate</label>
+                  <span className="text-sm font-mono tabular-nums text-muted-foreground">
+                    {boostUpRate.toFixed(1)}x
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Amplify microphone input before noise reduction. 1.0 = no boost.
+                </p>
+                <Slider
+                  id="boost-up-rate-slider"
+                  min={BOOST_UP_MIN}
+                  max={BOOST_UP_MAX}
+                  step={BOOST_UP_STEP}
+                  value={boostUpRate}
+                  onChange={setBoostUpRate}
+                />
+                <div className="flex justify-between text-[11px] text-muted-foreground">
+                  <span>No boost</span>
+                  <span>Max boost</span>
+                </div>
+              </div>
             </CardContent>
           </Card>
         </>

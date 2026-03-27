@@ -25,7 +25,7 @@ export function createRtAudio(): RtAudio {
 
 // ─── Device Enumeration ─────────────────────────────────────────────────────
 
-export function listInputDevices(): { id: number; name: string }[] {
+export function listMicrophones(): { id: number; name: string }[] {
   try {
     const rt = createRtAudio();
     return rt.getDevices()
@@ -37,7 +37,7 @@ export function listInputDevices(): { id: number; name: string }[] {
   }
 }
 
-export function listOutputDevices(): { id: number; name: string }[] {
+export function listSpeakers(): { id: number; name: string }[] {
   try {
     const rt = createRtAudio();
     return rt.getDevices()
@@ -305,7 +305,101 @@ export function playPcm(pcm: Float32Array, sampleRate: number, outputDeviceId: n
   }
 }
 
-// ─── Speaker Test ───────────────────────────────────────────────────────────
+// ─── Virtual Mic Output (persistent stream) ─────────────────────────────────
+
+let virtualMicOutput: RtAudio | null = null;
+let virtualMicOutChannels = 1;
+
+/**
+ * Open a persistent output stream to the virtual mic device.
+ * Call once when the voice session starts.
+ *
+ * `inputSideId` is the input-side device the user selected (e.g. "CABLE Output").
+ * We resolve the output-side sibling (e.g. "CABLE Input") to write audio into.
+ */
+export function startVirtualMicOutput(micId: number, sampleRate: number = SAMPLE_RATE): void {
+  stopVirtualMicOutput();
+  try {
+    const rt = createRtAudio();
+    const allDevices = rt.getDevices();
+    const inputDev = allDevices.find((d) => d.id === micId);
+
+    if (!inputDev) {
+      console.error(`[AudioService] Virtual mic device ${micId} not found`);
+      return;
+    }
+
+    // Resolve the output-side device
+    let outputDeviceId = micId;
+
+    virtualMicOutChannels = getOutputChannelCount(outputDeviceId);
+    virtualMicOutput = rt;
+    virtualMicOutput.openStream(
+      { deviceId: outputDeviceId, nChannels: virtualMicOutChannels },
+      null,
+      AUDIO_FORMAT,
+      sampleRate,
+      FRAME_SIZE,
+      'VirtualMicOutput',
+      null,
+      null,
+    );
+    virtualMicOutput.start();
+    console.log(`[AudioService] Virtual mic output started: device ${outputDeviceId} (${virtualMicOutChannels}ch)`);
+  } catch (err) {
+    console.error('[AudioService] Failed to start virtual mic output:', err);
+    virtualMicOutput = null;
+  }
+}
+
+/**
+ * Write mono Float32Array (Int16-range values) to the virtual mic.
+ * Stream must be open via startVirtualMicOutput().
+ */
+export function writeToVirtualMic(pcm: Float32Array): void {
+  if (!virtualMicOutput || !virtualMicOutput.isStreamRunning()) return;
+  try {
+    for (let offset = 0; offset < pcm.length; offset += FRAME_SIZE) {
+      const remaining = pcm.length - offset;
+      const chunkLen = Math.min(remaining, FRAME_SIZE);
+      const chunk = pcm.subarray(offset, offset + chunkLen);
+
+      let frame: Float32Array;
+      if (chunkLen < FRAME_SIZE) {
+        frame = new Float32Array(FRAME_SIZE);
+        frame.set(chunk);
+      } else {
+        frame = chunk;
+      }
+
+      // Write mono Int16 LE directly to the virtual mic
+      const buf = Buffer.alloc(FRAME_SIZE * 2);
+      for (let i = 0; i < FRAME_SIZE; i++) {
+        buf.writeInt16LE(Math.max(-32768, Math.min(32767, frame[i] | 0)), i * 2);
+      }
+      virtualMicOutput.write(buf);
+    }
+  } catch (err) {
+    console.error('[AudioService] Error writing to virtual mic:', err);
+  }
+}
+
+/**
+ * Close the virtual mic output stream.
+ * Call when the voice session ends.
+ */
+export function stopVirtualMicOutput(): void {
+  if (virtualMicOutput) {
+    try {
+      if (virtualMicOutput.isStreamRunning()) virtualMicOutput.stop();
+      if (virtualMicOutput.isStreamOpen()) virtualMicOutput.closeStream();
+    } catch (err) {
+      console.warn('[AudioService] Error stopping virtual mic output:', err);
+    }
+    virtualMicOutput = null;
+    console.log('[AudioService] Virtual mic output stopped');
+  }
+}
 
 export function playSpeakerTest(outputDeviceId: number): void {
   const sampleRate = SAMPLE_RATE;

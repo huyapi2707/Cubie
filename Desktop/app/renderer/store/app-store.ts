@@ -56,6 +56,10 @@ interface AppState {
   noiseGateDb: number;
   setNoiseGateDb: (db: number) => void;
 
+  // Boost Up Rate
+  boostUpRate: number;
+  setBoostUpRate: (rate: number) => void;
+
   // Settings hydration
   _hydrated: boolean;
   _hydrate: () => Promise<void>;
@@ -156,6 +160,13 @@ export const useAppStore = create<AppState>((set, get) => ({
     persistSettings({ noiseGateDb: db });
   },
 
+  // Boost Up Rate
+  boostUpRate: 1,
+  setBoostUpRate: (rate) => {
+    set({ boostUpRate: rate });
+    persistSettings({ boostUpRate: rate });
+  },
+
   // Settings hydration — called once on app startup
   _hydrated: false,
   _hydrate: async () => {
@@ -181,6 +192,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         patch.autoReconnect = settings.autoReconnect ?? true;
         patch.ttsGender = settings.ttsGender || 'neutral';
         patch.noiseGateDb = settings.noiseGateDb ?? -50;
+        patch.boostUpRate = settings.boostUpRate ?? 1;
       }
 
       set(patch as Partial<AppState>);

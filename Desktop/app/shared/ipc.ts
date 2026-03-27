@@ -117,6 +117,8 @@ export interface UserSettings {
   ttsGender: 'male' | 'female' | 'neutral';
   /** Pre-denoise noise gate threshold in dBFS (e.g. -50). Range: -60 to -20. */
   noiseGateDb: number;
+  /** Audio boost-up gain multiplier. Range: 1.0 – 100.0, step 0.1. Default: 1.0 (no boost). */
+  boostUpRate: number;
 }
 
 // ─── IPC Request/Response Maps ─────────────────────────────────────
