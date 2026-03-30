@@ -128,15 +128,15 @@ export function getDefaultOutputDeviceId(): number {
   }
 }
 
-// ─── Virtual Line Enumeration ───────────────────────────────────────────────
+// ─── Virtual Device Enumeration ───────────────────────────────────────────────
 
-import type { AudioLineInfo } from '../../shared/ipc';
+import type { VirtualDeviceInfo } from '../../shared/ipc';
 
 /**
- * Enumerate virtual audio lines by pairing virtual input and output devices
+ * Enumerate virtual audio virtualDevices by pairing virtual input and output devices
  * that share the same canonical cable name.
  */
-export function listLines(): AudioLineInfo[] {
+export function listVirtualDevices(): VirtualDeviceInfo[] {
   try {
     const rt = createRtAudio();
     const allDevices = rt.getDevices();
@@ -145,7 +145,7 @@ export function listLines(): AudioLineInfo[] {
     const virtualInputs = allDevices.filter((d) => d.inputChannels > 0 && isVirtualDevice(d.name));
     const virtualOutputs = allDevices.filter((d) => d.outputChannels > 0 && isVirtualDevice(d.name));
 
-    const lines: AudioLineInfo[] = [];
+    const virtualDevices: VirtualDeviceInfo[] = [];
     const usedOutputIds = new Set<number>();
 
     for (const input of virtualInputs) {
@@ -159,25 +159,25 @@ export function listLines(): AudioLineInfo[] {
 
       if (matchingOutput) {
         usedOutputIds.add(matchingOutput.id);
-        lines.push({
-          lineId: inputCanonical,
-          lineName: inputCanonical,
+        virtualDevices.push({
+          deviceId: inputCanonical,
+          deviceName: inputCanonical,
           inputDeviceId: input.id,
           outputDeviceId: matchingOutput.id,
         });
       }
     }
 
-    return lines;
+    return virtualDevices;
   } catch (err) {
-    console.error('[AudioService] Failed to list virtual lines', err);
+    console.error('[AudioService] Failed to list virtual devices', err);
     return [];
   }
 }
 
-/** Find a line by its lineId. */
-export function findLine(lineId: string): AudioLineInfo | undefined {
-  return listLines().find((l) => l.lineId === lineId);
+/** Find a virtual device by its deviceId. */
+export function findVirtualDevice(deviceId: string): VirtualDeviceInfo | undefined {
+  return listVirtualDevices().find((d) => d.deviceId === deviceId);
 }
 
 /**
@@ -420,55 +420,55 @@ export function playPcm(pcm: Float32Array, sampleRate: number, outputDeviceId: n
   }
 }
 
-// ─── Forward Line Output (persistent stream) ────────────────────────────────
+// ─── Forward Device Output (persistent stream) ────────────────────────────────
 
-let forwardLineOutput: RtAudio | null = null;
-let forwardLineOutChannels = 1;
+let forwardDeviceOutput: RtAudio | null = null;
+let forwardDeviceOutChannels = 1;
 
 /**
- * Open a persistent output stream to the forward line's output device.
+ * Open a persistent output stream to the forward device's output device.
  * Call once when the voice session starts.
  *
- * Resolves the output device from the line by lineId.
+ * Resolves the output device from the virtual device by deviceId.
  */
-export function startForwardLineOutput(lineId: string, sampleRate: number = SAMPLE_RATE): void {
-  stopForwardLineOutput();
+export function startForwardDeviceOutput(deviceId: string, sampleRate: number = SAMPLE_RATE): void {
+  stopForwardDeviceOutput();
   try {
-    const line = findLine(lineId);
-    if (!line) {
-      console.error(`[AudioService] Forward line '${lineId}' not found`);
+    const virtualDevice = findVirtualDevice(deviceId);
+    if (!virtualDevice) {
+      console.error(`[AudioService] Forward device '${deviceId}' not found`);
       return;
     }
 
-    const outputDeviceId = line.outputDeviceId;
+    const outputDeviceId = virtualDevice.outputDeviceId;
     const rt = createRtAudio();
 
-    forwardLineOutChannels = getOutputChannelCount(outputDeviceId);
-    forwardLineOutput = rt;
-    forwardLineOutput.openStream(
-      { deviceId: outputDeviceId, nChannels: forwardLineOutChannels },
+    forwardDeviceOutChannels = getOutputChannelCount(outputDeviceId);
+    forwardDeviceOutput = rt;
+    forwardDeviceOutput.openStream(
+      { deviceId: outputDeviceId, nChannels: forwardDeviceOutChannels },
       null,
       AUDIO_FORMAT,
       sampleRate,
       FRAME_SIZE,
-      'ForwardLineOutput',
+      'ForwardDeviceOutput',
       null,
       null,
     );
-    forwardLineOutput.start();
-    console.log(`[AudioService] Forward line output started: line '${lineId}' → device ${outputDeviceId} (${forwardLineOutChannels}ch)`);
+    forwardDeviceOutput.start();
+    console.log(`[AudioService] Forward device output started: device '${deviceId}' → device ${outputDeviceId} (${forwardDeviceOutChannels}ch)`);
   } catch (err) {
-    console.error('[AudioService] Failed to start forward line output:', err);
-    forwardLineOutput = null;
+    console.error('[AudioService] Failed to start forward device output:', err);
+    forwardDeviceOutput = null;
   }
 }
 
 /**
- * Write mono Float32Array (Int16-range values) to the forward line.
- * Stream must be open via startForwardLineOutput().
+ * Write mono Float32Array (Int16-range values) to the forward device.
+ * Stream must be open via startForwardDeviceOutput().
  */
-export function writeToForwardLine(pcm: Float32Array): void {
-  if (!forwardLineOutput || !forwardLineOutput.isStreamRunning()) return;
+export function writeToForwardDevice(pcm: Float32Array): void {
+  if (!forwardDeviceOutput || !forwardDeviceOutput.isStreamRunning()) return;
   try {
     for (let offset = 0; offset < pcm.length; offset += FRAME_SIZE) {
       const remaining = pcm.length - offset;
@@ -483,32 +483,32 @@ export function writeToForwardLine(pcm: Float32Array): void {
         frame = chunk;
       }
 
-      // Write mono Int16 LE directly to the forward line
+      // Write mono Int16 LE directly to the forward device
       const buf = Buffer.alloc(FRAME_SIZE * 2);
       for (let i = 0; i < FRAME_SIZE; i++) {
         buf.writeInt16LE(Math.max(-32768, Math.min(32767, frame[i] | 0)), i * 2);
       }
-      forwardLineOutput.write(buf);
+      forwardDeviceOutput.write(buf);
     }
   } catch (err) {
-    console.error('[AudioService] Error writing to forward line:', err);
+    console.error('[AudioService] Error writing to forward device:', err);
   }
 }
 
 /**
- * Close the forward line output stream.
+ * Close the forward device output stream.
  * Call when the voice session ends.
  */
-export function stopForwardLineOutput(): void {
-  if (forwardLineOutput) {
+export function stopForwardDeviceOutput(): void {
+  if (forwardDeviceOutput) {
     try {
-      if (forwardLineOutput.isStreamRunning()) forwardLineOutput.stop();
-      if (forwardLineOutput.isStreamOpen()) forwardLineOutput.closeStream();
+      if (forwardDeviceOutput.isStreamRunning()) forwardDeviceOutput.stop();
+      if (forwardDeviceOutput.isStreamOpen()) forwardDeviceOutput.closeStream();
     } catch (err) {
-      console.warn('[AudioService] Error stopping forward line output:', err);
+      console.warn('[AudioService] Error stopping forward device output:', err);
     }
-    forwardLineOutput = null;
-    console.log('[AudioService] Forward line output stopped');
+    forwardDeviceOutput = null;
+    console.log('[AudioService] Forward device output stopped');
   }
 }
 

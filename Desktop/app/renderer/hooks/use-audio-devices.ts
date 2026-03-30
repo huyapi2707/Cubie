@@ -7,25 +7,25 @@ export interface AudioDevice {
   isVirtual: boolean;
 }
 
-export interface AudioLine {
-  lineId: string;
-  lineName: string;
+export interface VirtualDevice {
+  deviceId: string;
+  deviceName: string;
   inputDeviceId: number;
   outputDeviceId: number;
 }
 
 /**
- * Hook to enumerate audio devices and virtual lines via the main process (audify RtAudio).
+ * Hook to enumerate audio devices and virtual devices via the main process (audify RtAudio).
  *
  * Returns:
  * - `microphones` / `speakers` — all devices with isVirtual flag
  * - `physicalMicrophones` / `physicalSpeakers` — filtered to real hardware only
- * - `lines` — paired virtual cable lines (input + output matched by cable name)
+ * - `virtualDevices` — paired virtual cable virtualDevices (input + output matched by cable name)
  */
 export function useAudioDevices() {
   const [microphones, setMicrophones] = useState<AudioDevice[]>([]);
   const [speakers, setSpeakers] = useState<AudioDevice[]>([]);
-  const [lines, setLines] = useState<AudioLine[]>([]);
+  const [virtualDevices, setVirtualDevices] = useState<VirtualDevice[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -33,9 +33,9 @@ export function useAudioDevices() {
     setLoading(true);
     setError(null);
     try {
-      const [deviceResult, lineResult] = await Promise.all([
+      const [deviceResult, virtualDeviceResult] = await Promise.all([
         window.electronAPI.audio.getDevices(),
-        window.electronAPI.audio.getLines(),
+        window.electronAPI.audio.getVirtualDevices(),
       ]);
 
       // Map RtAudio device info → AudioDevice shape used by comboboxes
@@ -57,10 +57,10 @@ export function useAudioDevices() {
       );
 
       // Map line info
-      setLines(
-        (lineResult ?? []).map((l: { lineId: string; lineName: string; inputDeviceId: number; outputDeviceId: number }) => ({
-          lineId: l.lineId,
-          lineName: l.lineName,
+      setVirtualDevices(
+        (virtualDeviceResult ?? []).map((l: { deviceId: string; deviceName: string; inputDeviceId: number; outputDeviceId: number }) => ({
+          deviceId: l.deviceId,
+          deviceName: l.deviceName,
           inputDeviceId: l.inputDeviceId,
           outputDeviceId: l.outputDeviceId,
         })),
@@ -69,7 +69,7 @@ export function useAudioDevices() {
       setError((err as Error).message);
       setMicrophones([]);
       setSpeakers([]);
-      setLines([]);
+      setVirtualDevices([]);
     } finally {
       setLoading(false);
     }
@@ -88,7 +88,7 @@ export function useAudioDevices() {
     speakers,
     physicalMicrophones,
     physicalSpeakers,
-    lines,
+    virtualDevices,
     loading,
     error,
     refresh: enumerate,

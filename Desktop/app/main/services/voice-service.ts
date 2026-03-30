@@ -13,7 +13,7 @@ import WebSocket from 'ws';
 import { BrowserWindow } from 'electron';
 import { encodeOpus, decodeOpus, isOpusEncoded } from './opus-codec';
 import { AudioPipeline } from './audio-pipeline';
-import { startForwardLineOutput, writeToForwardLine, stopForwardLineOutput } from './audio-service';
+import { startForwardDeviceOutput, writeToForwardDevice, stopForwardDeviceOutput } from './audio-service';
 import { getSettings } from './settings-store';
 import type { VoiceConfig } from '../../shared/ipc';
 import { IPC_CHANNELS } from '../../shared/ipc';
@@ -186,9 +186,9 @@ export class MainVoiceService {
       if (isOpusEncoded(data)) {
         const { audio, sampleRate } = decodeOpus(data);
 
-        // Write TTS audio to the forward line
-        console.log('[VoiceService] Writing TTS audio to forward line:', audio.length, 'samples');
-        writeToForwardLine(audio);
+        // Write TTS audio to the forward device
+        console.log('[VoiceService] Writing TTS audio to forward device:', audio.length, 'samples');
+        writeToForwardDevice(audio);
       } else {
         console.warn('[VoiceService] Received unknown binary message');
       }
@@ -215,10 +215,10 @@ export class MainVoiceService {
       await this.pipeline.start(deviceId);
       console.log('[VoiceService] Audio pipeline started');
 
-      // Open persistent output stream to forward line
-      const forwardLineId = settings.forwardLineId;
-      if (forwardLineId) {
-        startForwardLineOutput(forwardLineId);
+      // Open persistent output stream to forward device
+      const forwardDeviceId = settings.forwardDeviceId;
+      if (forwardDeviceId) {
+        startForwardDeviceOutput(forwardDeviceId);
       }
     } catch (err) {
       console.error('[VoiceService] Failed to start audio pipeline:', err);
@@ -230,7 +230,7 @@ export class MainVoiceService {
       await this.pipeline.stop();
       this.pipeline = null;
     }
-    stopForwardLineOutput();
+    stopForwardDeviceOutput();
   }
 
   private handleSpeechSegment(audio: Float32Array): void {
@@ -305,7 +305,7 @@ export class MainVoiceService {
     if (!settings.sourceLanguage) errors.push('Source language is not set');
     if (!settings.targetLanguage) errors.push('Target language is not set');
     if (!settings.physicalMicId) errors.push('Physical microphone is not selected');
-    if (!settings.forwardLineId) errors.push('Forward line is not selected');
+    if (!settings.forwardDeviceId) errors.push('Forward device is not selected');
 
     return errors;
   }

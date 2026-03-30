@@ -23,13 +23,13 @@ export function DashboardPage() {
   const setRunning = useAppStore((s) => s.setRunning);
   const sourceLanguage = useAppStore((s) => s.sourceLanguage);
   const targetLanguage = useAppStore((s) => s.targetLanguage);
-  const forwardLineId = useAppStore((s) => s.forwardLineId);
+  const forwardDeviceId = useAppStore((s) => s.forwardDeviceId);
   const physicalSpeakerId = useAppStore((s) => s.physicalSpeakerId);
 
-  // Resolve the forward line's input device ID for the listen stream
-  const { lines } = useAudioDevices();
-  const forwardLine = lines.find((l) => l.lineId === forwardLineId);
-  const forwardInputDeviceId = forwardLine?.inputDeviceId ?? 0;
+  // Resolve the forward device's input device ID for the listen stream
+  const { virtualDevices } = useAudioDevices();
+  const forwardDevice = virtualDevices.find((l) => l.deviceId === forwardDeviceId);
+  const forwardInputDeviceId = forwardDevice?.inputDeviceId ?? 0;
 
   // ── Local state ───────────────────────────────────────────────────────────
   const [connecting, setConnecting] = useState(false);
@@ -105,7 +105,7 @@ export function DashboardPage() {
 
   // TTS audio is played directly in the main process (no renderer round-trip)
 
-  // ── 2. Listen: stream forward line → physical speaker (via main process) ───
+  // ── 2. Listen: stream forward device → physical speaker (via main process) ───
 
   const stopListening = useCallback(() => {
     window.electronAPI.audio.listenStop();
@@ -324,8 +324,8 @@ export function DashboardPage() {
       {/* ─── Toggle Controls ──────────────────────────────────────────── */}
       <div className="flex gap-3 max-w-lg mt-4 animate-fade-in">
 
-        {/* Listen toggle — stream forward line → physical speaker */}
-        {forwardLineId && physicalSpeakerId && (
+        {/* Listen toggle — stream forward device → physical speaker */}
+        {forwardDeviceId && physicalSpeakerId && (
           <div className="w-fit flex items-center gap-6 rounded-lg bg-card/60 border border-border/30 px-4 py-3 backdrop-blur-sm">
             <div className="flex items-center gap-2.5">
               <Volume2 className={cn('h-4 w-4', listening ? 'text-primary' : 'text-muted-foreground')} />

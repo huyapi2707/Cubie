@@ -3,7 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { DeviceCombobox } from '@/components/functional/device-combobox';
-import { LineCombobox } from '@/components/functional/line-combobox';
+import { VirtualDeviceCombobox } from '@/components/functional/virtual-device-combobox';
 import { MicTester } from '@/components/functional/mic-tester';
 import { SpeakerTester } from '@/components/functional/speaker-tester';
 import { RawLevelMeter } from '@/components/functional/raw-level-meter';
@@ -22,11 +22,11 @@ export function DeviceTab() {
   const physicalSpeakerId = useAppStore((s) => s.physicalSpeakerId);
   const setPhysicalSpeaker = useAppStore((s) => s.setPhysicalSpeaker);
 
-  // Virtual lines
-  const forwardLineId = useAppStore((s) => s.forwardLineId);
-  const setForwardLine = useAppStore((s) => s.setForwardLine);
-  const reverseLineId = useAppStore((s) => s.reverseLineId);
-  const setReverseLine = useAppStore((s) => s.setReverseLine);
+  // Virtual virtualDevices
+  const forwardDeviceId = useAppStore((s) => s.forwardDeviceId);
+  const setForwardDevice = useAppStore((s) => s.setForwardDevice);
+  const reverseDeviceId = useAppStore((s) => s.reverseDeviceId);
+  const setReverseDevice = useAppStore((s) => s.setReverseDevice);
 
   // Audio quality
   const noiseGateDb = useAppStore((s) => s.noiseGateDb);
@@ -34,10 +34,10 @@ export function DeviceTab() {
   const boostUpRate = useAppStore((s) => s.boostUpRate);
   const setBoostUpRate = useAppStore((s) => s.setBoostUpRate);
 
-  const { physicalMicrophones, physicalSpeakers, lines, loading, error, refresh } = useAudioDevices();
+  const { physicalMicrophones, physicalSpeakers, virtualDevices, loading, error, refresh } = useAudioDevices();
 
   // Duplicate line validation
-  const isDuplicateLine = forwardLineId && reverseLineId && forwardLineId === reverseLineId;
+  const isDuplicateLine = forwardDeviceId && reverseDeviceId && forwardDeviceId === reverseDeviceId;
 
   return (
     <div className="space-y-6">
@@ -45,7 +45,7 @@ export function DeviceTab() {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-lg font-semibold">Audio Devices</h2>
-          <p className="text-sm text-muted-foreground">Configure physical devices and virtual lines for call translation</p>
+          <p className="text-sm text-muted-foreground">Configure physical devices and virtual devices for call translation</p>
         </div>
         <Button
           variant="ghost"
@@ -117,12 +117,12 @@ export function DeviceTab() {
             </CardContent>
           </Card>
 
-          {/* ─── Virtual Lines Card ────────────────────────────── */}
+          {/* ─── Virtual Devices Card ────────────────────────────── */}
           <Card>
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
                 <Cable className="h-4 w-4" />
-                Virtual Lines
+                Virtual Devices
               </CardTitle>
               <CardDescription>Virtual audio cables (e.g. VB-CABLE) for routing audio between apps</CardDescription>
             </CardHeader>
@@ -132,12 +132,12 @@ export function DeviceTab() {
                 <div className="flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2">
                   <AlertCircle className="h-4 w-4 text-destructive shrink-0" />
                   <p className="text-xs text-destructive">
-                    Forward and reverse lines must be different. Please select a different line for each direction.
+                    Forward and reverse devices must be different. Please select a different line for each direction.
                   </p>
                 </div>
               )}
 
-              {lines.length === 0 && !loading && (
+              {virtualDevices.length === 0 && !loading && (
                 <div className="rounded-lg border border-border/50 bg-muted/30 px-4 py-3">
                   <p className="text-sm text-muted-foreground">No virtual audio cables detected.</p>
                   <p className="mt-1 text-xs text-muted-foreground">
@@ -146,45 +146,45 @@ export function DeviceTab() {
                 </div>
               )}
 
-              {/* Forward Line */}
+              {/* Forward Device */}
               <div className="space-y-2">
                 <div className="flex items-center gap-2">
-                  <label className="text-sm font-medium">Forward Line</label>
+                  <label className="text-sm font-medium">Forward Device</label>
                   <ArrowRight className="h-3.5 w-3.5 text-muted-foreground" />
                 </div>
                 <p className="text-xs text-muted-foreground">
                   Your voice → translated → sent to communication app
                 </p>
-                <LineCombobox
-                  lines={lines}
+                <VirtualDeviceCombobox
+                  virtualDevices={virtualDevices}
                   loading={loading}
-                  selectedId={forwardLineId}
-                  onSelect={(id) => setForwardLine(id)}
-                  placeholder="Select forward line..."
+                  selectedId={forwardDeviceId}
+                  onSelect={(id) => setForwardDevice(id)}
+                  placeholder="Select forward device..."
                   icon={<ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground" />}
-                  disabledLineId={reverseLineId}
+                  disabledDeviceId={reverseDeviceId}
                 />
               </div>
 
               <Separator />
 
-              {/* Reverse Line */}
+              {/* Reverse Device */}
               <div className="space-y-2">
                 <div className="flex items-center gap-2">
-                  <label className="text-sm font-medium">Reverse Line</label>
+                  <label className="text-sm font-medium">Reverse Device</label>
                   <ArrowLeft className="h-3.5 w-3.5 text-muted-foreground" />
                 </div>
                 <p className="text-xs text-muted-foreground">
                   Peer's voice → translated → played on your physical speaker
                 </p>
-                <LineCombobox
-                  lines={lines}
+                <VirtualDeviceCombobox
+                  virtualDevices={virtualDevices}
                   loading={loading}
-                  selectedId={reverseLineId}
-                  onSelect={(id) => setReverseLine(id)}
-                  placeholder="Select reverse line..."
+                  selectedId={reverseDeviceId}
+                  onSelect={(id) => setReverseDevice(id)}
+                  placeholder="Select reverse device..."
                   icon={<ArrowLeft className="h-4 w-4 shrink-0 text-muted-foreground" />}
-                  disabledLineId={forwardLineId}
+                  disabledDeviceId={forwardDeviceId}
                 />
               </div>
             </CardContent>

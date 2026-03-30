@@ -12,7 +12,7 @@ import {
   listSpeakers,
   listPhysicalMicrophones,
   listPhysicalSpeakers,
-  listLines,
+  listVirtualDevices,
   startListen,
   stopListen,
   startMicTest,
@@ -32,9 +32,9 @@ export function registerAudioHandlers(): void {
     };
   });
 
-  // Virtual line enumeration (paired input+output virtual cables)
-  ipcMain.handle(IPC_CHANNELS.AUDIO_GET_LINES, () => {
-    return listLines();
+  // Virtual device enumeration (paired input+output virtual cables)
+  ipcMain.handle(IPC_CHANNELS.AUDIO_GET_VIRTUAL_DEVICES, () => {
+    return listVirtualDevices();
   });
 
   // Listen stream (outputMic → speaker) — receives numeric device IDs

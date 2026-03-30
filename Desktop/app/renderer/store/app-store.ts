@@ -31,11 +31,11 @@ interface AppState {
   physicalSpeakerId: string;
   setPhysicalSpeaker: (id: string) => void;
 
-  forwardLineId: string;
-  setForwardLine: (id: string) => void;
+  forwardDeviceId: string;
+  setForwardDevice: (id: string) => void;
 
-  reverseLineId: string;
-  setReverseLine: (id: string) => void;
+  reverseDeviceId: string;
+  setReverseDevice: (id: string) => void;
 
   // Running state
   running: boolean;
@@ -116,16 +116,16 @@ export const useAppStore = create<AppState>((set, get) => ({
     persistSettings({ physicalSpeakerId: id });
   },
 
-  forwardLineId: '',
-  setForwardLine: (id) => {
-    set({ forwardLineId: id });
-    persistSettings({ forwardLineId: id });
+  forwardDeviceId: '',
+  setForwardDevice: (id) => {
+    set({ forwardDeviceId: id });
+    persistSettings({ forwardDeviceId: id });
   },
 
-  reverseLineId: '',
-  setReverseLine: (id) => {
-    set({ reverseLineId: id });
-    persistSettings({ reverseLineId: id });
+  reverseDeviceId: '',
+  setReverseDevice: (id) => {
+    set({ reverseDeviceId: id });
+    persistSettings({ reverseDeviceId: id });
   },
 
   // Running state (in-memory only — not persisted)
@@ -194,8 +194,8 @@ export const useAppStore = create<AppState>((set, get) => ({
         patch.theme = settings.theme || 'dark';
         patch.physicalMicId = settings.physicalMicId || '';
         patch.physicalSpeakerId = settings.physicalSpeakerId || '';
-        patch.forwardLineId = settings.forwardLineId || '';
-        patch.reverseLineId = settings.reverseLineId || '';
+        patch.forwardDeviceId = settings.forwardDeviceId || '';
+        patch.reverseDeviceId = settings.reverseDeviceId || '';
         // Use saved languages, or fallback to voice config defaults
         patch.sourceLanguage = settings.sourceLanguage || voiceConfig?.defaultSourceLanguage || '';
         patch.targetLanguage = settings.targetLanguage || voiceConfig?.defaultTargetLanguage || '';

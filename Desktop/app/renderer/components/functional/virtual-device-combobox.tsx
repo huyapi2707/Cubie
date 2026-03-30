@@ -3,42 +3,42 @@ import { ChevronsUpDown, Check, Ban } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export interface LineItem {
-  lineId: string;
-  lineName: string;
+  deviceId: string;
+  deviceName: string;
 }
 
 /**
- * Combobox for selecting a virtual audio line.
- * Accepts a `disabledLineId` prop to prevent the same line being selected
+ * Combobox for selecting a virtual audio virtualDevice.
+ * Accepts a `disabledDeviceId` prop to prevent the same line being selected
  * for both forward and reverse.
  */
-export function LineCombobox({
-  lines,
+export function VirtualDeviceCombobox({
+  virtualDevices,
   loading,
   selectedId,
   onSelect,
   placeholder,
   icon,
-  disabledLineId,
+  disabledDeviceId,
 }: {
-  lines: LineItem[];
+  virtualDevices: LineItem[];
   loading: boolean;
   selectedId: string;
   onSelect: (id: string) => void;
   placeholder: string;
   icon: React.ReactNode;
   /** The line ID already selected by the other selector — shown but disabled. */
-  disabledLineId?: string;
+  disabledDeviceId?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const selectedLabel = lines.find((l) => l.lineId === selectedId)?.lineName ?? '';
+  const selectedLabel = virtualDevices.find((l) => l.deviceId === selectedId)?.deviceName ?? '';
 
-  const filtered = lines.filter((l) =>
-    l.lineName.toLowerCase().includes(search.toLowerCase()),
+  const filtered = virtualDevices.filter((l) =>
+    l.deviceName.toLowerCase().includes(search.toLowerCase()),
   );
 
   useEffect(() => {
@@ -70,7 +70,7 @@ export function LineCombobox({
       >
         {icon}
         <span className={cn('flex-1 text-left truncate', !selectedId && 'text-muted-foreground')}>
-          {loading ? 'Scanning lines...' : selectedLabel || placeholder}
+          {loading ? 'Scanning virtualDevices...' : selectedLabel || placeholder}
         </span>
         <ChevronsUpDown className="h-4 w-4 shrink-0 text-muted-foreground" />
       </button>
@@ -81,7 +81,7 @@ export function LineCombobox({
             <input
               ref={inputRef}
               type="text"
-              placeholder="Search lines..."
+              placeholder="Search virtualDevices..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="w-full rounded-md bg-transparent px-2 py-1.5 text-sm outline-none placeholder:text-muted-foreground"
@@ -97,21 +97,21 @@ export function LineCombobox({
 
             {!loading && filtered.length === 0 && (
               <div className="px-3 py-4 text-center text-sm text-muted-foreground">
-                {search ? 'No matching lines' : 'No virtual lines found'}
+                {search ? 'No matching virtualDevices' : 'No virtual devices found'}
               </div>
             )}
 
             {!loading &&
-              filtered.map((line) => {
-                const isSelected = selectedId === line.lineId;
-                const isDisabled = disabledLineId === line.lineId;
+              filtered.map((virtualDevice) => {
+                const isSelected = selectedId === virtualDevice.deviceId;
+                const isDisabled = disabledDeviceId === virtualDevice.deviceId;
                 return (
                   <button
-                    key={line.lineId}
+                    key={virtualDevice.deviceId}
                     disabled={isDisabled}
                     onClick={() => {
                       if (isDisabled) return;
-                      onSelect(line.lineId);
+                      onSelect(virtualDevice.deviceId);
                       setOpen(false);
                       setSearch('');
                     }}
@@ -134,7 +134,7 @@ export function LineCombobox({
                         )}
                       />
                     )}
-                    <span className="truncate">{line.lineName}</span>
+                    <span className="truncate">{virtualDevice.deviceName}</span>
                     {isDisabled && (
                       <span className="ml-auto text-[10px] text-muted-foreground">In use</span>
                     )}

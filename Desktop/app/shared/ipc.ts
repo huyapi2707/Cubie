@@ -44,9 +44,9 @@ export const IPC_CHANNELS = {
 
   // Audio devices (main process enumeration via audify)
   AUDIO_GET_DEVICES: 'audio:get-devices',
-  AUDIO_GET_LINES: 'audio:get-lines',
+  AUDIO_GET_VIRTUAL_DEVICES: 'audio:get-virtual-devices',
 
-  // Listen: stream forward line → speaker (main process)
+  // Listen: stream forward device → speaker (main process)
   LISTEN_START: 'audio:listen-start',
   LISTEN_STOP: 'audio:listen-stop',
 
@@ -113,10 +113,10 @@ export interface UserSettings {
   physicalMicId: string;
   /** Physical speaker device ID — plays translated audio to user */
   physicalSpeakerId: string;
-  /** Forward virtual line ID — carries translated voice to comm app */
-  forwardLineId: string;
-  /** Reverse virtual line ID — carries peer voice into translation pipeline */
-  reverseLineId: string;
+  /** Forward virtual device ID — carries translated voice to comm app */
+  forwardDeviceId: string;
+  /** Reverse virtual device ID — carries peer voice into translation pipeline */
+  reverseDeviceId: string;
   sourceLanguage: string;
   targetLanguage: string;
   autoReconnect: boolean;
@@ -128,11 +128,11 @@ export interface UserSettings {
 }
 
 /** A virtual audio line (cable pair) with matched input/output devices. */
-export interface AudioLineInfo {
+export interface VirtualDeviceInfo {
   /** Unique line identifier (canonical cable name) */
-  lineId: string;
+  deviceId: string;
   /** Human-readable line name */
-  lineName: string;
+  deviceName: string;
   /** RtAudio device ID for the input (capture) side */
   inputDeviceId: number;
   /** RtAudio device ID for the output (playback) side */
