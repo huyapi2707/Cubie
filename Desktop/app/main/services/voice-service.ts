@@ -13,7 +13,7 @@ import WebSocket from 'ws';
 import { BrowserWindow } from 'electron';
 import { encodeOpus, decodeOpus, isOpusEncoded } from './opus-codec';
 import { AudioPipeline } from './audio-pipeline';
-import { startVirtualMicOutput, writeToVirtualMic, stopVirtualMicOutput } from './audio-service';
+import { startForwardLineOutput, writeToForwardLine, stopForwardLineOutput } from './audio-service';
 import { getSettings } from './settings-store';
 import type { VoiceConfig } from '../../shared/ipc';
 import { IPC_CHANNELS } from '../../shared/ipc';
@@ -186,9 +186,9 @@ export class MainVoiceService {
       if (isOpusEncoded(data)) {
         const { audio, sampleRate } = decodeOpus(data);
 
-        // Write TTS audio to the virtual output mic
-        console.log('[VoiceService] Writing TTS audio to virtual mic:', audio.length, 'samples');
-        writeToVirtualMic(audio);
+        // Write TTS audio to the forward line
+        console.log('[VoiceService] Writing TTS audio to forward line:', audio.length, 'samples');
+        writeToForwardLine(audio);
       } else {
         console.warn('[VoiceService] Received unknown binary message');
       }
@@ -201,7 +201,7 @@ export class MainVoiceService {
 
   private async startAudioPipeline(): Promise<void> {
     const settings = getSettings();
-    const deviceId = Number(settings.inMicId) || 0;
+    const deviceId = Number(settings.physicalMicId) || 0;
 
     try {
       this.pipeline = new AudioPipeline({
@@ -215,10 +215,10 @@ export class MainVoiceService {
       await this.pipeline.start(deviceId);
       console.log('[VoiceService] Audio pipeline started');
 
-      // Open persistent output stream to virtual mic
-      const outMicId = Number(settings.outMicId) || 0;
-      if (outMicId > 0) {
-        startVirtualMicOutput(outMicId);
+      // Open persistent output stream to forward line
+      const forwardLineId = settings.forwardLineId;
+      if (forwardLineId) {
+        startForwardLineOutput(forwardLineId);
       }
     } catch (err) {
       console.error('[VoiceService] Failed to start audio pipeline:', err);
@@ -230,7 +230,7 @@ export class MainVoiceService {
       await this.pipeline.stop();
       this.pipeline = null;
     }
-    stopVirtualMicOutput();
+    stopForwardLineOutput();
   }
 
   private handleSpeechSegment(audio: Float32Array): void {
@@ -304,8 +304,8 @@ export class MainVoiceService {
 
     if (!settings.sourceLanguage) errors.push('Source language is not set');
     if (!settings.targetLanguage) errors.push('Target language is not set');
-    if (!settings.inMicId) errors.push('Input microphone is not selected');
-    if (!settings.outMicId) errors.push('Output microphone is not selected');
+    if (!settings.physicalMicId) errors.push('Physical microphone is not selected');
+    if (!settings.forwardLineId) errors.push('Forward line is not selected');
 
     return errors;
   }

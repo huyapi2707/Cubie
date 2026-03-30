@@ -39,6 +39,7 @@ const CH = {
   VOICE_MESSAGE: 'voice:message',
   VOICE_AUDIO_RECEIVED: 'voice:audio-received',
   AUDIO_GET_DEVICES: 'audio:get-devices',
+  AUDIO_GET_LINES: 'audio:get-lines',
   LISTEN_START: 'audio:listen-start',
   LISTEN_STOP: 'audio:listen-stop',
   MIC_TEST_START: 'audio:mic-test-start',
@@ -55,9 +56,10 @@ type ThemeMode = 'light' | 'dark' | 'system';
 
 interface UserSettings {
   theme: ThemeMode;
-  inMicId: string;
-  outMicId: string;
-  outSpeakerId: string;
+  physicalMicId: string;
+  physicalSpeakerId: string;
+  forwardLineId: string;
+  reverseLineId: string;
   sourceLanguage: string;
   targetLanguage: string;
   autoReconnect: boolean;
@@ -143,6 +145,7 @@ const electronAPI = {
   // ─── Audio Devices & I/O ─────────────────────────────────────
   audio: {
     getDevices: () => ipcRenderer.invoke(CH.AUDIO_GET_DEVICES),
+    getLines: () => ipcRenderer.invoke(CH.AUDIO_GET_LINES),
     listenStart: (inputDeviceId: number, outputDeviceId: number): Promise<void> =>
       ipcRenderer.invoke(CH.LISTEN_START, inputDeviceId, outputDeviceId),
     listenStop: (): Promise<void> => ipcRenderer.invoke(CH.LISTEN_STOP),

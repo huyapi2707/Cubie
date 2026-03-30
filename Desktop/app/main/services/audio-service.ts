@@ -23,30 +23,93 @@ export function createRtAudio(): RtAudio {
 }
 
 
+// ─── Virtual Cable Detection ────────────────────────────────────────────────
+
+/**
+ * Known virtual audio cable name patterns.
+ * Any device whose name matches one of these (case-insensitive) is classified
+ * as virtual. Everything else is physical.
+ */
+const VIRTUAL_CABLE_PATTERNS: RegExp[] = [
+  /\bvb-audio\b/i,
+  /\bcable\s+(input|output)\b/i,
+  /\bvoicemeeter\b/i,
+  /\bvirtual\s+audio\s+cable\b/i,
+  /\bvac\b/i,
+  /\bblackhole\b/i,                   // macOS virtual cable
+  /\bsoundflower\b/i,                 // macOS virtual cable
+];
+
+/** Check if a device name matches a known virtual cable pattern. */
+export function isVirtualDevice(name: string): boolean {
+  return VIRTUAL_CABLE_PATTERNS.some((p) => p.test(name));
+}
+
+/**
+ * Extract a canonical cable name from a device name for line-pair matching.
+ *
+ * Examples:
+ *   "CABLE Output (VB-Audio Virtual Cable)" → "VB-Audio Virtual Cable"
+ *   "CABLE Input (VB-Audio Virtual Cable)"  → "VB-Audio Virtual Cable"
+ *   "Line 1 (Virtual Audio Cable)"          → "Virtual Audio Cable"
+ *   "VoiceMeeter Output (VB-Audio ...)"     → "VB-Audio ..."
+ *
+ * Strategy: extract the parenthesised suffix first; fall back to the full name
+ * with Input/Output stripped.
+ */
+function extractCanonicalCableName(deviceName: string): string {
+  // Try to extract text inside parentheses
+  const parenMatch = deviceName.match(/\((.+?)\)/);
+  if (parenMatch) return parenMatch[1].trim();
+
+  // Fall back: strip Input/Output keywords
+  return deviceName
+    .replace(/\b(input|output)\b/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+
 // ─── Device Enumeration ─────────────────────────────────────────────────────
 
-export function listMicrophones(): { id: number; name: string }[] {
+export interface DeviceInfo {
+  id: number;
+  name: string;
+  isVirtual: boolean;
+}
+
+export function listMicrophones(): DeviceInfo[] {
   try {
     const rt = createRtAudio();
     return rt.getDevices()
       .filter((d) => d.inputChannels > 0)
-      .map((d) => ({ id: d.id, name: d.name }));
+      .map((d) => ({ id: d.id, name: d.name, isVirtual: isVirtualDevice(d.name) }));
   } catch (err) {
     console.error('[AudioService] Failed to list input devices', err);
     return [];
   }
 }
 
-export function listSpeakers(): { id: number; name: string }[] {
+export function listSpeakers(): DeviceInfo[] {
   try {
     const rt = createRtAudio();
     return rt.getDevices()
       .filter((d) => d.outputChannels > 0)
-      .map((d) => ({ id: d.id, name: d.name }));
+      .map((d) => ({ id: d.id, name: d.name, isVirtual: isVirtualDevice(d.name) }));
   } catch (err) {
     console.error('[AudioService] Failed to list output devices', err);
     return [];
   }
+}
+
+/** List only physical (non-virtual) microphones. */
+export function listPhysicalMicrophones(): DeviceInfo[] {
+  return listMicrophones().filter((d) => !d.isVirtual);
+}
+
+/** List only physical (non-virtual) speakers. */
+export function listPhysicalSpeakers(): DeviceInfo[] {
+  return listSpeakers().filter((d) => !d.isVirtual);
 }
 
 export function getDefaultInputDeviceId(): number {
@@ -63,6 +126,58 @@ export function getDefaultOutputDeviceId(): number {
   } catch (err) {
     return 0;
   }
+}
+
+// ─── Virtual Line Enumeration ───────────────────────────────────────────────
+
+import type { AudioLineInfo } from '../../shared/ipc';
+
+/**
+ * Enumerate virtual audio lines by pairing virtual input and output devices
+ * that share the same canonical cable name.
+ */
+export function listLines(): AudioLineInfo[] {
+  try {
+    const rt = createRtAudio();
+    const allDevices = rt.getDevices();
+
+    // Collect virtual inputs and outputs
+    const virtualInputs = allDevices.filter((d) => d.inputChannels > 0 && isVirtualDevice(d.name));
+    const virtualOutputs = allDevices.filter((d) => d.outputChannels > 0 && isVirtualDevice(d.name));
+
+    const lines: AudioLineInfo[] = [];
+    const usedOutputIds = new Set<number>();
+
+    for (const input of virtualInputs) {
+      const inputCanonical = extractCanonicalCableName(input.name);
+
+      // Find matching output with same canonical name
+      const matchingOutput = virtualOutputs.find((o) => {
+        if (usedOutputIds.has(o.id)) return false;
+        return extractCanonicalCableName(o.name) === inputCanonical;
+      });
+
+      if (matchingOutput) {
+        usedOutputIds.add(matchingOutput.id);
+        lines.push({
+          lineId: inputCanonical,
+          lineName: inputCanonical,
+          inputDeviceId: input.id,
+          outputDeviceId: matchingOutput.id,
+        });
+      }
+    }
+
+    return lines;
+  } catch (err) {
+    console.error('[AudioService] Failed to list virtual lines', err);
+    return [];
+  }
+}
+
+/** Find a line by its lineId. */
+export function findLine(lineId: string): AudioLineInfo | undefined {
+  return listLines().find((l) => l.lineId === lineId);
 }
 
 /**
@@ -305,59 +420,55 @@ export function playPcm(pcm: Float32Array, sampleRate: number, outputDeviceId: n
   }
 }
 
-// ─── Virtual Mic Output (persistent stream) ─────────────────────────────────
+// ─── Forward Line Output (persistent stream) ────────────────────────────────
 
-let virtualMicOutput: RtAudio | null = null;
-let virtualMicOutChannels = 1;
+let forwardLineOutput: RtAudio | null = null;
+let forwardLineOutChannels = 1;
 
 /**
- * Open a persistent output stream to the virtual mic device.
+ * Open a persistent output stream to the forward line's output device.
  * Call once when the voice session starts.
  *
- * `inputSideId` is the input-side device the user selected (e.g. "CABLE Output").
- * We resolve the output-side sibling (e.g. "CABLE Input") to write audio into.
+ * Resolves the output device from the line by lineId.
  */
-export function startVirtualMicOutput(micId: number, sampleRate: number = SAMPLE_RATE): void {
-  stopVirtualMicOutput();
+export function startForwardLineOutput(lineId: string, sampleRate: number = SAMPLE_RATE): void {
+  stopForwardLineOutput();
   try {
-    const rt = createRtAudio();
-    const allDevices = rt.getDevices();
-    const inputDev = allDevices.find((d) => d.id === micId);
-
-    if (!inputDev) {
-      console.error(`[AudioService] Virtual mic device ${micId} not found`);
+    const line = findLine(lineId);
+    if (!line) {
+      console.error(`[AudioService] Forward line '${lineId}' not found`);
       return;
     }
 
-    // Resolve the output-side device
-    let outputDeviceId = micId;
+    const outputDeviceId = line.outputDeviceId;
+    const rt = createRtAudio();
 
-    virtualMicOutChannels = getOutputChannelCount(outputDeviceId);
-    virtualMicOutput = rt;
-    virtualMicOutput.openStream(
-      { deviceId: outputDeviceId, nChannels: virtualMicOutChannels },
+    forwardLineOutChannels = getOutputChannelCount(outputDeviceId);
+    forwardLineOutput = rt;
+    forwardLineOutput.openStream(
+      { deviceId: outputDeviceId, nChannels: forwardLineOutChannels },
       null,
       AUDIO_FORMAT,
       sampleRate,
       FRAME_SIZE,
-      'VirtualMicOutput',
+      'ForwardLineOutput',
       null,
       null,
     );
-    virtualMicOutput.start();
-    console.log(`[AudioService] Virtual mic output started: device ${outputDeviceId} (${virtualMicOutChannels}ch)`);
+    forwardLineOutput.start();
+    console.log(`[AudioService] Forward line output started: line '${lineId}' → device ${outputDeviceId} (${forwardLineOutChannels}ch)`);
   } catch (err) {
-    console.error('[AudioService] Failed to start virtual mic output:', err);
-    virtualMicOutput = null;
+    console.error('[AudioService] Failed to start forward line output:', err);
+    forwardLineOutput = null;
   }
 }
 
 /**
- * Write mono Float32Array (Int16-range values) to the virtual mic.
- * Stream must be open via startVirtualMicOutput().
+ * Write mono Float32Array (Int16-range values) to the forward line.
+ * Stream must be open via startForwardLineOutput().
  */
-export function writeToVirtualMic(pcm: Float32Array): void {
-  if (!virtualMicOutput || !virtualMicOutput.isStreamRunning()) return;
+export function writeToForwardLine(pcm: Float32Array): void {
+  if (!forwardLineOutput || !forwardLineOutput.isStreamRunning()) return;
   try {
     for (let offset = 0; offset < pcm.length; offset += FRAME_SIZE) {
       const remaining = pcm.length - offset;
@@ -372,32 +483,32 @@ export function writeToVirtualMic(pcm: Float32Array): void {
         frame = chunk;
       }
 
-      // Write mono Int16 LE directly to the virtual mic
+      // Write mono Int16 LE directly to the forward line
       const buf = Buffer.alloc(FRAME_SIZE * 2);
       for (let i = 0; i < FRAME_SIZE; i++) {
         buf.writeInt16LE(Math.max(-32768, Math.min(32767, frame[i] | 0)), i * 2);
       }
-      virtualMicOutput.write(buf);
+      forwardLineOutput.write(buf);
     }
   } catch (err) {
-    console.error('[AudioService] Error writing to virtual mic:', err);
+    console.error('[AudioService] Error writing to forward line:', err);
   }
 }
 
 /**
- * Close the virtual mic output stream.
+ * Close the forward line output stream.
  * Call when the voice session ends.
  */
-export function stopVirtualMicOutput(): void {
-  if (virtualMicOutput) {
+export function stopForwardLineOutput(): void {
+  if (forwardLineOutput) {
     try {
-      if (virtualMicOutput.isStreamRunning()) virtualMicOutput.stop();
-      if (virtualMicOutput.isStreamOpen()) virtualMicOutput.closeStream();
+      if (forwardLineOutput.isStreamRunning()) forwardLineOutput.stop();
+      if (forwardLineOutput.isStreamOpen()) forwardLineOutput.closeStream();
     } catch (err) {
-      console.warn('[AudioService] Error stopping virtual mic output:', err);
+      console.warn('[AudioService] Error stopping forward line output:', err);
     }
-    virtualMicOutput = null;
-    console.log('[AudioService] Virtual mic output stopped');
+    forwardLineOutput = null;
+    console.log('[AudioService] Forward line output stopped');
   }
 }
 

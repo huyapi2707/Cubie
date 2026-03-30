@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { InfoCard } from '@/components/functional/info-card';
 import { useAppStore } from '@/store';
 import { voiceService } from '@/services';
+import { useAudioDevices } from '@/hooks';
 import { cn } from '@/lib/utils';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -22,8 +23,13 @@ export function DashboardPage() {
   const setRunning = useAppStore((s) => s.setRunning);
   const sourceLanguage = useAppStore((s) => s.sourceLanguage);
   const targetLanguage = useAppStore((s) => s.targetLanguage);
-  const outputMicId = useAppStore((s) => s.outMicId);
-  const speakerId = useAppStore((s) => s.outSpeakerId);
+  const forwardLineId = useAppStore((s) => s.forwardLineId);
+  const physicalSpeakerId = useAppStore((s) => s.physicalSpeakerId);
+
+  // Resolve the forward line's input device ID for the listen stream
+  const { lines } = useAudioDevices();
+  const forwardLine = lines.find((l) => l.lineId === forwardLineId);
+  const forwardInputDeviceId = forwardLine?.inputDeviceId ?? 0;
 
   // ── Local state ───────────────────────────────────────────────────────────
   const [connecting, setConnecting] = useState(false);
@@ -99,7 +105,7 @@ export function DashboardPage() {
 
   // TTS audio is played directly in the main process (no renderer round-trip)
 
-  // ── 2. Listen: stream outputMic → speaker (via main process) ───────────────
+  // ── 2. Listen: stream forward line → physical speaker (via main process) ───
 
   const stopListening = useCallback(() => {
     window.electronAPI.audio.listenStop();
@@ -107,16 +113,16 @@ export function DashboardPage() {
   }, []);
 
   const startListening = useCallback(async () => {
-    if (!outputMicId || !speakerId || listening) return;
+    if (!forwardInputDeviceId || !physicalSpeakerId || listening) return;
 
     try {
-      await window.electronAPI.audio.listenStart(Number(outputMicId), Number(speakerId));
+      await window.electronAPI.audio.listenStart(forwardInputDeviceId, Number(physicalSpeakerId));
       setListening(true);
     } catch (err) {
       console.error('[Dashboard] Failed to start listening:', err);
       stopListening();
     }
-  }, [outputMicId, speakerId, listening, stopListening]);
+  }, [forwardInputDeviceId, physicalSpeakerId, listening, stopListening]);
 
   const toggleListening = useCallback(() => {
     if (listening) {
@@ -318,8 +324,8 @@ export function DashboardPage() {
       {/* ─── Toggle Controls ──────────────────────────────────────────── */}
       <div className="flex gap-3 max-w-lg mt-4 animate-fade-in">
 
-        {/* Listen toggle — stream outputMic → speaker */}
-        {outputMicId && speakerId && (
+        {/* Listen toggle — stream forward line → physical speaker */}
+        {forwardLineId && physicalSpeakerId && (
           <div className="w-fit flex items-center gap-6 rounded-lg bg-card/60 border border-border/30 px-4 py-3 backdrop-blur-sm">
             <div className="flex items-center gap-2.5">
               <Volume2 className={cn('h-4 w-4', listening ? 'text-primary' : 'text-muted-foreground')} />

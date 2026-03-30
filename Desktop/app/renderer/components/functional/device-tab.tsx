@@ -1,8 +1,9 @@
-import { Mic, Volume2, RefreshCw, ShieldCheck } from 'lucide-react';
+import { Mic, Volume2, RefreshCw, ShieldCheck, Cable, ArrowRight, ArrowLeft, AlertCircle } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { DeviceCombobox } from '@/components/functional/device-combobox';
+import { LineCombobox } from '@/components/functional/line-combobox';
 import { MicTester } from '@/components/functional/mic-tester';
 import { SpeakerTester } from '@/components/functional/speaker-tester';
 import { RawLevelMeter } from '@/components/functional/raw-level-meter';
@@ -15,17 +16,28 @@ import { cn } from '@/lib/utils';
 // ─── Device Tab ─────────────────────────────────────────────────────────────
 
 export function DeviceTab() {
-  const inMicId = useAppStore((s) => s.inMicId);
-  const setMicrophone = useAppStore((s) => s.setMicrophone);
-  const outMicId = useAppStore((s) => s.outMicId);
-  const setOutputMic = useAppStore((s) => s.setOutputMic);
-  const outSpeakerId = useAppStore((s) => s.outSpeakerId);
-  const setSpeaker = useAppStore((s) => s.setSpeaker);
+  // Physical devices
+  const physicalMicId = useAppStore((s) => s.physicalMicId);
+  const setPhysicalMic = useAppStore((s) => s.setPhysicalMic);
+  const physicalSpeakerId = useAppStore((s) => s.physicalSpeakerId);
+  const setPhysicalSpeaker = useAppStore((s) => s.setPhysicalSpeaker);
+
+  // Virtual lines
+  const forwardLineId = useAppStore((s) => s.forwardLineId);
+  const setForwardLine = useAppStore((s) => s.setForwardLine);
+  const reverseLineId = useAppStore((s) => s.reverseLineId);
+  const setReverseLine = useAppStore((s) => s.setReverseLine);
+
+  // Audio quality
   const noiseGateDb = useAppStore((s) => s.noiseGateDb);
   const setNoiseGateDb = useAppStore((s) => s.setNoiseGateDb);
   const boostUpRate = useAppStore((s) => s.boostUpRate);
   const setBoostUpRate = useAppStore((s) => s.setBoostUpRate);
-  const { microphones, speakers, loading, error, refresh } = useAudioDevices();
+
+  const { physicalMicrophones, physicalSpeakers, lines, loading, error, refresh } = useAudioDevices();
+
+  // Duplicate line validation
+  const isDuplicateLine = forwardLineId && reverseLineId && forwardLineId === reverseLineId;
 
   return (
     <div className="space-y-6">
@@ -33,7 +45,7 @@ export function DeviceTab() {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-lg font-semibold">Audio Devices</h2>
-          <p className="text-sm text-muted-foreground">Configure input and output devices for call translation</p>
+          <p className="text-sm text-muted-foreground">Configure physical devices and virtual lines for call translation</p>
         </div>
         <Button
           variant="ghost"
@@ -57,82 +69,128 @@ export function DeviceTab() {
 
       {!error && (
         <>
-          {/* ─── Microphone Card ──────────────────────────────────── */}
+          {/* ─── Physical Devices Card ──────────────────────────── */}
           <Card>
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
                 <Mic className="h-4 w-4" />
-                Microphone
+                Physical Devices
               </CardTitle>
-              <CardDescription>Configure input and output microphones</CardDescription>
+              <CardDescription>Your real microphone and speaker hardware</CardDescription>
             </CardHeader>
             <CardContent className="space-y-5">
-              {/* Input Microphone */}
+              {/* Physical Microphone */}
               <div className="space-y-2">
-                <label className="text-sm font-medium">Input Microphone</label>
+                <label className="text-sm font-medium">Microphone</label>
                 <p className="text-xs text-muted-foreground">
-                  The microphone used to capture your voice
+                  The physical microphone used to capture your voice
                 </p>
                 <DeviceCombobox
-                  devices={microphones}
+                  devices={physicalMicrophones}
                   loading={loading}
-                  selectedId={inMicId}
-                  onSelect={(id) => setMicrophone(id)}
+                  selectedId={physicalMicId}
+                  onSelect={(id) => setPhysicalMic(id)}
                   placeholder="Select a microphone..."
                   icon={<Mic className="h-4 w-4 shrink-0 text-muted-foreground" />}
                 />
-                {inMicId && <MicTester micId={Number(inMicId)} speakerId={Number(outSpeakerId)} />}
+                {physicalMicId && <MicTester micId={Number(physicalMicId)} speakerId={Number(physicalSpeakerId)} />}
               </div>
 
               <Separator />
 
-              {/* Output Microphone */}
+              {/* Physical Speaker */}
               <div className="space-y-2">
-                <label className="text-sm font-medium">Output Microphone</label>
+                <label className="text-sm font-medium">Speaker</label>
                 <p className="text-xs text-muted-foreground">
-                  The virtual microphone for translated audio output
+                  The physical speaker used to play translated audio from your peer
                 </p>
                 <DeviceCombobox
-                  devices={microphones}
+                  devices={physicalSpeakers}
                   loading={loading}
-                  selectedId={outMicId}
-                  onSelect={(id) => setOutputMic(id)}
-                  placeholder="Select an output microphone..."
-                  icon={<Mic className="h-4 w-4 shrink-0 text-muted-foreground" />}
-                />
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* ─── Speaker Card ────────────────────────────────────── */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base flex items-center gap-2">
-                <Volume2 className="h-4 w-4" />
-                Speaker
-              </CardTitle>
-              <CardDescription>Configure the audio output device</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-5">
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Output Speaker</label>
-                <p className="text-xs text-muted-foreground">
-                  The speaker used to play translated audio
-                </p>
-                <DeviceCombobox
-                  devices={speakers}
-                  loading={loading}
-                  selectedId={outSpeakerId}
-                  onSelect={(id) => setSpeaker(id)}
+                  selectedId={physicalSpeakerId}
+                  onSelect={(id) => setPhysicalSpeaker(id)}
                   placeholder="Select a speaker..."
                   icon={<Volume2 className="h-4 w-4 shrink-0 text-muted-foreground" />}
                 />
-                {outSpeakerId && <SpeakerTester deviceId={Number(outSpeakerId)} />}
+                {physicalSpeakerId && <SpeakerTester deviceId={Number(physicalSpeakerId)} />}
               </div>
             </CardContent>
           </Card>
 
-          {/* ─── Voice Sensitivity Card ───────────────────────────── */}
+          {/* ─── Virtual Lines Card ────────────────────────────── */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <Cable className="h-4 w-4" />
+                Virtual Lines
+              </CardTitle>
+              <CardDescription>Virtual audio cables (e.g. VB-CABLE) for routing audio between apps</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              {/* Duplicate warning */}
+              {isDuplicateLine && (
+                <div className="flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2">
+                  <AlertCircle className="h-4 w-4 text-destructive shrink-0" />
+                  <p className="text-xs text-destructive">
+                    Forward and reverse lines must be different. Please select a different line for each direction.
+                  </p>
+                </div>
+              )}
+
+              {lines.length === 0 && !loading && (
+                <div className="rounded-lg border border-border/50 bg-muted/30 px-4 py-3">
+                  <p className="text-sm text-muted-foreground">No virtual audio cables detected.</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Install a virtual audio cable like VB-CABLE to enable audio routing between apps.
+                  </p>
+                </div>
+              )}
+
+              {/* Forward Line */}
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <label className="text-sm font-medium">Forward Line</label>
+                  <ArrowRight className="h-3.5 w-3.5 text-muted-foreground" />
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Your voice → translated → sent to communication app
+                </p>
+                <LineCombobox
+                  lines={lines}
+                  loading={loading}
+                  selectedId={forwardLineId}
+                  onSelect={(id) => setForwardLine(id)}
+                  placeholder="Select forward line..."
+                  icon={<ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground" />}
+                  disabledLineId={reverseLineId}
+                />
+              </div>
+
+              <Separator />
+
+              {/* Reverse Line */}
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <label className="text-sm font-medium">Reverse Line</label>
+                  <ArrowLeft className="h-3.5 w-3.5 text-muted-foreground" />
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Peer's voice → translated → played on your physical speaker
+                </p>
+                <LineCombobox
+                  lines={lines}
+                  loading={loading}
+                  selectedId={reverseLineId}
+                  onSelect={(id) => setReverseLine(id)}
+                  placeholder="Select reverse line..."
+                  icon={<ArrowLeft className="h-4 w-4 shrink-0 text-muted-foreground" />}
+                  disabledLineId={forwardLineId}
+                />
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* ─── Audio Quality Card ────────────────────────────── */}
           <Card>
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
@@ -167,7 +225,7 @@ export function DeviceTab() {
               </div>
 
               {/* Raw volume meter for calibration */}
-              {inMicId && <RawLevelMeter micId={Number(inMicId)} />}
+              {physicalMicId && <RawLevelMeter micId={Number(physicalMicId)} />}
 
               <Separator />
 

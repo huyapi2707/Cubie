@@ -12,6 +12,14 @@ interface AudioDeviceInfo {
   outputChannels: number;
   isDefaultInput: boolean;
   isDefaultOutput: boolean;
+  isVirtual: boolean;
+}
+
+interface AudioLineInfo {
+  lineId: string;
+  lineName: string;
+  inputDeviceId: number;
+  outputDeviceId: number;
 }
 
 interface ElectronAPI {
@@ -56,6 +64,7 @@ interface ElectronAPI {
   };
   audio: {
     getDevices: () => Promise<{ inputs: AudioDeviceInfo[]; outputs: AudioDeviceInfo[] }>;
+    getLines: () => Promise<AudioLineInfo[]>;
     listenStart: (inputDeviceId: number, outputDeviceId: number) => Promise<void>;
     listenStop: () => Promise<void>;
     micTestStart: (micId: number, speakerId: number) => Promise<void>;

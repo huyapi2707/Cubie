@@ -10,6 +10,9 @@ import { IPC_CHANNELS } from '../../shared/ipc';
 import {
   listMicrophones,
   listSpeakers,
+  listPhysicalMicrophones,
+  listPhysicalSpeakers,
+  listLines,
   startListen,
   stopListen,
   startMicTest,
@@ -21,12 +24,17 @@ import {
 } from '../services/audio-service';
 
 export function registerAudioHandlers(): void {
-  // Device enumeration
+  // Device enumeration (all devices with isVirtual flag)
   ipcMain.handle(IPC_CHANNELS.AUDIO_GET_DEVICES, () => {
     return {
       inputs: listMicrophones(),
       outputs: listSpeakers(),
     };
+  });
+
+  // Virtual line enumeration (paired input+output virtual cables)
+  ipcMain.handle(IPC_CHANNELS.AUDIO_GET_LINES, () => {
+    return listLines();
   });
 
   // Listen stream (outputMic → speaker) — receives numeric device IDs

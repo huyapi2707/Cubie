@@ -5,9 +5,10 @@ import type { UserSettings, ThemeMode } from '../../shared/ipc';
 
 const DEFAULTS: UserSettings = {
   theme: 'light',
-  inMicId: '',
-  outMicId: '',
-  outSpeakerId: '',
+  physicalMicId: '',
+  physicalSpeakerId: '',
+  forwardLineId: '',
+  reverseLineId: '',
   sourceLanguage: 'en',
   targetLanguage: 'vi',
   autoReconnect: true,
@@ -18,9 +19,10 @@ const DEFAULTS: UserSettings = {
 
 const schema = {
   theme: { type: 'string' as const, enum: ['light', 'dark', 'system'], default: DEFAULTS.theme },
-  inMicId: { type: 'string' as const, default: '' },
-  outMicId: { type: 'string' as const, default: '' },
-  outSpeakerId: { type: 'string' as const, default: '' },
+  physicalMicId: { type: 'string' as const, default: '' },
+  physicalSpeakerId: { type: 'string' as const, default: '' },
+  forwardLineId: { type: 'string' as const, default: '' },
+  reverseLineId: { type: 'string' as const, default: '' },
   sourceLanguage: { type: 'string' as const, default: 'en' },
   targetLanguage: { type: 'string' as const, default: 'vi' },
   autoReconnect: { type: 'boolean' as const, default: true },
@@ -42,9 +44,10 @@ const store = new Store<UserSettings>({
 export function getSettings(): UserSettings {
   return {
     theme: store.get('theme') as ThemeMode,
-    inMicId: store.get('inMicId'),
-    outMicId: store.get('outMicId'),
-    outSpeakerId: store.get('outSpeakerId'),
+    physicalMicId: store.get('physicalMicId'),
+    physicalSpeakerId: store.get('physicalSpeakerId'),
+    forwardLineId: store.get('forwardLineId'),
+    reverseLineId: store.get('reverseLineId'),
     sourceLanguage: store.get('sourceLanguage'),
     targetLanguage: store.get('targetLanguage'),
     autoReconnect: store.get('autoReconnect'),

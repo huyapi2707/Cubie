@@ -44,8 +44,9 @@ export const IPC_CHANNELS = {
 
   // Audio devices (main process enumeration via audify)
   AUDIO_GET_DEVICES: 'audio:get-devices',
+  AUDIO_GET_LINES: 'audio:get-lines',
 
-  // Listen: stream outputMic → speaker (main process)
+  // Listen: stream forward line → speaker (main process)
   LISTEN_START: 'audio:listen-start',
   LISTEN_STOP: 'audio:listen-stop',
 
@@ -108,9 +109,14 @@ export interface VoiceConfig {
 
 export interface UserSettings {
   theme: ThemeMode;
-  inMicId: string;
-  outMicId: string;
-  outSpeakerId: string;
+  /** Physical microphone device ID — captures user voice */
+  physicalMicId: string;
+  /** Physical speaker device ID — plays translated audio to user */
+  physicalSpeakerId: string;
+  /** Forward virtual line ID — carries translated voice to comm app */
+  forwardLineId: string;
+  /** Reverse virtual line ID — carries peer voice into translation pipeline */
+  reverseLineId: string;
   sourceLanguage: string;
   targetLanguage: string;
   autoReconnect: boolean;
@@ -119,6 +125,18 @@ export interface UserSettings {
   noiseGateDb: number;
   /** Audio boost-up gain multiplier. Range: 1.0 – 100.0, step 0.1. Default: 1.0 (no boost). */
   boostUpRate: number;
+}
+
+/** A virtual audio line (cable pair) with matched input/output devices. */
+export interface AudioLineInfo {
+  /** Unique line identifier (canonical cable name) */
+  lineId: string;
+  /** Human-readable line name */
+  lineName: string;
+  /** RtAudio device ID for the input (capture) side */
+  inputDeviceId: number;
+  /** RtAudio device ID for the output (playback) side */
+  outputDeviceId: number;
 }
 
 // ─── IPC Request/Response Maps ─────────────────────────────────────

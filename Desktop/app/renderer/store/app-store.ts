@@ -24,15 +24,18 @@ interface AppState {
   platform: string;
   setAppInfo: (info: { version: string; platform: string }) => void;
 
-  // Audio Devices (IDs only — labels are derived from device list at render time)
-  inMicId: string;
-  setMicrophone: (id: string) => void;
+  // Audio Devices
+  physicalMicId: string;
+  setPhysicalMic: (id: string) => void;
 
-  outMicId: string;
-  setOutputMic: (id: string) => void;
+  physicalSpeakerId: string;
+  setPhysicalSpeaker: (id: string) => void;
 
-  outSpeakerId: string;
-  setSpeaker: (id: string) => void;
+  forwardLineId: string;
+  setForwardLine: (id: string) => void;
+
+  reverseLineId: string;
+  setReverseLine: (id: string) => void;
 
   // Running state
   running: boolean;
@@ -101,22 +104,28 @@ export const useAppStore = create<AppState>((set, get) => ({
   setAppInfo: (info) => set(info),
 
   // Audio Devices
-  inMicId: '',
-  setMicrophone: (id) => {
-    set({ inMicId: id });
-    persistSettings({ inMicId: id });
+  physicalMicId: '',
+  setPhysicalMic: (id) => {
+    set({ physicalMicId: id });
+    persistSettings({ physicalMicId: id });
   },
 
-  outMicId: '',
-  setOutputMic: (id) => {
-    set({ outMicId: id });
-    persistSettings({ outMicId: id });
+  physicalSpeakerId: '',
+  setPhysicalSpeaker: (id) => {
+    set({ physicalSpeakerId: id });
+    persistSettings({ physicalSpeakerId: id });
   },
 
-  outSpeakerId: '',
-  setSpeaker: (id) => {
-    set({ outSpeakerId: id });
-    persistSettings({ outSpeakerId: id });
+  forwardLineId: '',
+  setForwardLine: (id) => {
+    set({ forwardLineId: id });
+    persistSettings({ forwardLineId: id });
+  },
+
+  reverseLineId: '',
+  setReverseLine: (id) => {
+    set({ reverseLineId: id });
+    persistSettings({ reverseLineId: id });
   },
 
   // Running state (in-memory only — not persisted)
@@ -183,9 +192,10 @@ export const useAppStore = create<AppState>((set, get) => ({
 
       if (settings) {
         patch.theme = settings.theme || 'dark';
-        patch.inMicId = settings.inMicId || '';
-        patch.outMicId = settings.outMicId || '';
-        patch.outSpeakerId = settings.outSpeakerId || '';
+        patch.physicalMicId = settings.physicalMicId || '';
+        patch.physicalSpeakerId = settings.physicalSpeakerId || '';
+        patch.forwardLineId = settings.forwardLineId || '';
+        patch.reverseLineId = settings.reverseLineId || '';
         // Use saved languages, or fallback to voice config defaults
         patch.sourceLanguage = settings.sourceLanguage || voiceConfig?.defaultSourceLanguage || '';
         patch.targetLanguage = settings.targetLanguage || voiceConfig?.defaultTargetLanguage || '';
