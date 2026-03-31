@@ -28,6 +28,7 @@ interface ElectronAPI {
     getPlatform: () => Promise<string>;
     quit: () => void;
     setRunning: (running: boolean) => void;
+    onError: (callback: (payload: { message: string; source: string; stack?: string }) => void) => () => void;
   };
   window: {
     minimize: () => void;

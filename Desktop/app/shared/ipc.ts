@@ -32,6 +32,7 @@ export const IPC_CHANNELS = {
   SYSTEM_GET_INFO: 'system:get-info',
   SYSTEM_OPEN_EXTERNAL: 'system:open-external',
   SYSTEM_NOTIFICATION: 'system:notification',
+  APP_ERROR: 'app:error',
 
   // Voice
   VOICE_GET_CONFIG: 'voice:get-config',
@@ -170,6 +171,7 @@ export interface VoiceAudioPayload {
 export interface IpcEventMap {
   [IPC_CHANNELS.THEME_CHANGED]: ThemeMode;
   [IPC_CHANNELS.SYSTEM_NOTIFICATION]: { title: string; body: string };
+  [IPC_CHANNELS.APP_ERROR]: { message: string; source: string; stack?: string };
   [IPC_CHANNELS.VOICE_STATUS_CHANGED]: VoiceStatusPayload;
   [IPC_CHANNELS.VOICE_MESSAGE]: Record<string, unknown>;
   [IPC_CHANNELS.VOICE_AUDIO_RECEIVED]: VoiceAudioPayload;

@@ -110,6 +110,33 @@ function destroyTray(): void {
   tray = null;
 }
 
+// ─── Error Interception ────────────────────────────────────────────
+function forwardErrorToRenderer(message: string, source: string, stack?: string) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('app:error', { message, source, stack });
+  }
+}
+
+const originalConsoleError = console.error;
+console.error = (...args: any[]) => {
+  originalConsoleError(...args);
+  const msg = args.map(a => (a instanceof Error ? a.message : String(a))).join(' ');
+  const stack = args.find(a => a instanceof Error)?.stack;
+  forwardErrorToRenderer(msg, 'console.error', stack);
+};
+
+process.on('uncaughtException', (error) => {
+  originalConsoleError('Uncaught Exception:', error);
+  forwardErrorToRenderer(error.message, 'uncaughtException', error.stack);
+});
+
+process.on('unhandledRejection', (reason) => {
+  originalConsoleError('Unhandled Rejection:', reason);
+  const msg = reason instanceof Error ? reason.message : String(reason);
+  const stack = reason instanceof Error ? reason.stack : undefined;
+  forwardErrorToRenderer(msg, 'unhandledRejection', stack);
+});
+
 // ─── Window Creation ───────────────────────────────────────────────
 
 function createMainWindow(): BrowserWindow {

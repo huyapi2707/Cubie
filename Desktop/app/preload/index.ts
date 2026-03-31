@@ -25,6 +25,7 @@ const CH = {
   THEME_CHANGED: 'theme:changed',
   SYSTEM_GET_INFO: 'system:get-info',
   SYSTEM_OPEN_EXTERNAL: 'system:open-external',
+  APP_ERROR: 'app:error',
   FS_READ_FILE: 'fs:read-file',
   FS_WRITE_FILE: 'fs:write-file',
   FS_SELECT_FILE: 'fs:select-file',
@@ -75,6 +76,11 @@ const electronAPI = {
     getPlatform: (): Promise<string> => ipcRenderer.invoke(CH.APP_GET_PLATFORM),
     quit: (): void => ipcRenderer.send(CH.APP_QUIT),
     setRunning: (running: boolean): void => ipcRenderer.send(CH.APP_SET_RUNNING, running),
+    onError: (callback: (payload: { message: string; source: string; stack?: string }) => void): (() => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, payload: { message: string; source: string; stack?: string }) => callback(payload);
+      ipcRenderer.on(CH.APP_ERROR, handler);
+      return () => ipcRenderer.removeListener(CH.APP_ERROR, handler);
+    },
   },
 
   // ─── Window Controls ────────────────────────────────────────
