@@ -21,7 +21,7 @@ export function AppLayout({ children }: AppLayoutProps) {
     return window.electronAPI.app.onError(({ message, source }) => {
       showPopup({
         type: 'error',
-        title: `Main Process Error (${source})`,
+        title: source,
         message: message,
         duration: 8000,
       });

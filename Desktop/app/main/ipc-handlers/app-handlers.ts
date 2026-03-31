@@ -9,6 +9,7 @@ import { readFile, writeFile } from 'fs/promises';
 import os from 'os';
 import { IPC_CHANNELS, type SystemInfo, type ThemeMode, type UserSettings } from '../../shared/ipc';
 import { getSettings, setSettings, getSetting } from '../services/settings-store';
+import { reportError } from '../services/error-reporter';
 
 export function registerAppHandlers(): void {
   // ─── Application ───────────────────────────────────────────────
@@ -95,6 +96,7 @@ export function registerAppHandlers(): void {
       const data = await readFile(filePath, 'utf-8');
       return { success: true, data };
     } catch (error) {
+      reportError('Failed to read file: ' + (error as Error).message, 'File System');
       return { success: false, error: (error as Error).message };
     }
   });
@@ -104,6 +106,7 @@ export function registerAppHandlers(): void {
       await writeFile(args.path, args.content, 'utf-8');
       return { success: true };
     } catch (error) {
+      reportError('Failed to write file: ' + (error as Error).message, 'File System');
       return { success: false, error: (error as Error).message };
     }
   });

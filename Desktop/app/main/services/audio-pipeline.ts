@@ -27,6 +27,7 @@ import { SAMPLE_RATE, FRAME_SIZE, AUDIO_FORMAT, MIC_CHANNELS } from './constants
 import { getSetting } from './settings-store';
 import type { RNNoise } from '../../../native/rnnoise/index';
 import { calculateRms, rmsToDb, normalizeInt16, denormalizeInt16 } from './utils';
+import { reportError } from './error-reporter';
 
 
 // Load the native RNNoise addon (compiled from xiph/rnnoise via N-API)
@@ -217,6 +218,7 @@ export class AudioPipeline {
       // Feed to Silero VAD (async but we fire-and-forget from the audio callback)
       this.vad?.processAudio(normalized).catch((err) => {
         console.error('[AudioPipeline] VAD processAudio error:', err);
+        reportError('Voice activity detection error. Audio processing may be degraded.', 'Audio Pipeline');
       });
     }
 

@@ -111,30 +111,17 @@ function destroyTray(): void {
 }
 
 // ─── Error Interception ────────────────────────────────────────────
-function forwardErrorToRenderer(message: string, source: string, stack?: string) {
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send('app:error', { message, source, stack });
-  }
-}
-
-const originalConsoleError = console.error;
-console.error = (...args: any[]) => {
-  originalConsoleError(...args);
-  const msg = args.map(a => (a instanceof Error ? a.message : String(a))).join(' ');
-  const stack = args.find(a => a instanceof Error)?.stack;
-  forwardErrorToRenderer(msg, 'console.error', stack);
-};
+import { reportError } from './services/error-reporter';
 
 process.on('uncaughtException', (error) => {
-  originalConsoleError('Uncaught Exception:', error);
-  forwardErrorToRenderer(error.message, 'uncaughtException', error.stack);
+  console.error('Uncaught Exception:', error);
+  reportError(error.message, 'Uncaught Exception');
 });
 
 process.on('unhandledRejection', (reason) => {
-  originalConsoleError('Unhandled Rejection:', reason);
+  console.error('Unhandled Rejection:', reason);
   const msg = reason instanceof Error ? reason.message : String(reason);
-  const stack = reason instanceof Error ? reason.stack : undefined;
-  forwardErrorToRenderer(msg, 'unhandledRejection', stack);
+  reportError(msg, 'Unhandled Rejection');
 });
 
 // ─── Window Creation ───────────────────────────────────────────────

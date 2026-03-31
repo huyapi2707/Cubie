@@ -2,6 +2,7 @@ import { RtAudio, RtAudioApi } from 'audify';
 import { AudioPipeline } from './audio-pipeline';
 import { SAMPLE_RATE, FRAME_SIZE, AUDIO_FORMAT, MIC_CHANNELS } from './constants';
 import { calculateRms, rmsToDb } from './utils';
+import { reportError } from './error-reporter';
 
 
 /**
@@ -86,6 +87,7 @@ export function listMicrophones(): DeviceInfo[] {
       .map((d) => ({ id: d.id, name: d.name, isVirtual: isVirtualDevice(d.name) }));
   } catch (err) {
     console.error('[AudioService] Failed to list input devices', err);
+    reportError('Failed to list microphones. Check your audio drivers.', 'Audio Devices');
     return [];
   }
 }
@@ -98,6 +100,7 @@ export function listSpeakers(): DeviceInfo[] {
       .map((d) => ({ id: d.id, name: d.name, isVirtual: isVirtualDevice(d.name) }));
   } catch (err) {
     console.error('[AudioService] Failed to list output devices', err);
+    reportError('Failed to list speakers. Check your audio drivers.', 'Audio Devices');
     return [];
   }
 }
@@ -171,6 +174,7 @@ export function listVirtualDevices(): VirtualDeviceInfo[] {
     return virtualDevices;
   } catch (err) {
     console.error('[AudioService] Failed to list virtual devices', err);
+    reportError('Failed to detect virtual audio cables. Ensure VB-CABLE or similar is installed.', 'Audio Devices');
     return [];
   }
 }
@@ -271,6 +275,7 @@ export function startListen(inputDeviceId: number, outputDeviceId: number): void
     console.log(`[AudioService] Started listen stream: device ${inputDeviceId} -> device ${outputDeviceId} (${outChannels}ch)`);
   } catch (err) {
     console.error('[AudioService] Failed to start listen stream:', err);
+    reportError('Failed to start listen stream. The selected audio device may be in use or unavailable.', 'Listen Stream');
     listenAudio = null;
   }
 }
@@ -337,6 +342,7 @@ export async function startMicTest(micId: number, speakerId: number, onLevel: (l
     console.log(`[AudioService] Started mic test for mic: ${micId}, speaker: ${resolvedSpeakerId}`);
   } catch (err) {
     console.error('[AudioService] Failed to start mic test:', err);
+    reportError('Failed to start microphone test. The device may be in use or disconnected.', 'Mic Test');
     stopMicTest();
   }
 }
@@ -417,6 +423,7 @@ export function playPcm(pcm: Float32Array, sampleRate: number, outputDeviceId: n
     console.log(`[AudioService] Playing PCM: ${totalFrames} frames, ${outChannels}ch on device ${outputDeviceId}`);
   } catch (err) {
     console.error('[AudioService] Failed to play PCM:', err);
+    reportError('Failed to play audio. The output device may be unavailable.', 'Audio Playback');
   }
 }
 
@@ -437,6 +444,7 @@ export function startForwardDeviceOutput(deviceId: string, sampleRate: number = 
     const virtualDevice = findVirtualDevice(deviceId);
     if (!virtualDevice) {
       console.error(`[AudioService] Forward device '${deviceId}' not found`);
+      reportError(`Forward device '${deviceId}' not found. Please re-select your virtual device.`, 'Forward Device');
       return;
     }
 
@@ -459,6 +467,7 @@ export function startForwardDeviceOutput(deviceId: string, sampleRate: number = 
     console.log(`[AudioService] Forward device output started: device '${deviceId}' → device ${outputDeviceId} (${forwardDeviceOutChannels}ch)`);
   } catch (err) {
     console.error('[AudioService] Failed to start forward device output:', err);
+    reportError('Failed to open forward device output. The virtual cable may be in use or disconnected.', 'Forward Device');
     forwardDeviceOutput = null;
   }
 }
@@ -492,6 +501,7 @@ export function writeToForwardDevice(pcm: Float32Array): void {
     }
   } catch (err) {
     console.error('[AudioService] Error writing to forward device:', err);
+    reportError('Error writing audio to forward device. The stream may have been interrupted.', 'Forward Device');
   }
 }
 
@@ -586,6 +596,7 @@ export function startRawLevel(micId: number, onLevel: (db: number) => void): voi
     console.log(`[AudioService] Started raw level meter for mic: ${micId}`);
   } catch (err) {
     console.error('[AudioService] Failed to start raw level meter:', err);
+    reportError('Failed to start audio level meter. The microphone may be in use or disconnected.', 'Level Meter');
     stopRawLevel();
   }
 }

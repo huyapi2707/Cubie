@@ -17,6 +17,7 @@ import { startForwardDeviceOutput, writeToForwardDevice, stopForwardDeviceOutput
 import { getSettings } from './settings-store';
 import type { VoiceConfig } from '../../shared/ipc';
 import { IPC_CHANNELS } from '../../shared/ipc';
+import { reportError } from './error-reporter';
 
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -64,6 +65,7 @@ export class MainVoiceService {
     const errors = this.validateSettings();
     if (errors.length > 0) {
       console.error('[VoiceService] Settings validation failed:', errors);
+      reportError('Cannot connect: ' + errors.join(', '), 'Voice Connection');
       this.lastErrors = errors;
       this.setStatus('error');
       return;
@@ -145,6 +147,7 @@ export class MainVoiceService {
 
     this.ws.on('error', (err) => {
       console.error('[VoiceService] WebSocket error:', err.message);
+      reportError('Voice server connection error: ' + err.message, 'Voice Connection');
     });
   }
 
@@ -171,6 +174,7 @@ export class MainVoiceService {
 
         case 'error':
           console.error('[VoiceService] Server error:', message.code, message.message);
+          reportError('Voice server error: ' + (message.message || message.code), 'Voice Server');
           break;
       }
 
@@ -178,6 +182,7 @@ export class MainVoiceService {
       this.sendToRenderer(IPC_CHANNELS.VOICE_MESSAGE, message);
     } catch (err) {
       console.error('[VoiceService] Failed to parse message:', err);
+      reportError('Failed to parse message from voice server.', 'Voice Connection');
     }
   }
 
@@ -194,6 +199,7 @@ export class MainVoiceService {
       }
     } catch (err) {
       console.error('[VoiceService] Failed to decode/play audio:', err);
+      reportError('Failed to decode incoming audio from voice server.', 'Audio Decode');
     }
   }
 
@@ -222,6 +228,7 @@ export class MainVoiceService {
       }
     } catch (err) {
       console.error('[VoiceService] Failed to start audio pipeline:', err);
+      reportError('Failed to start audio capture pipeline. Check your microphone settings.', 'Audio Pipeline');
     }
   }
 
@@ -246,6 +253,7 @@ export class MainVoiceService {
       );
     } catch (err) {
       console.error('[VoiceService] Opus encoding failed:', err);
+      reportError('Failed to encode audio for transmission.', 'Opus Encoding');
     }
   }
 
