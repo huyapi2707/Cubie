@@ -13,11 +13,12 @@ const RENDERER_DEV_URL = 'http://localhost:5173';
 // In production, change the host and switch to wss:// / https://.
 const VOICE_SERVER_HOST = isDev ? 'localhost:3001' : 'localhost:3001';
 const VOICE_SERVER_WS = `ws://${VOICE_SERVER_HOST}`;
+const VOICE_SERVER_HTTP = `http://${VOICE_SERVER_HOST}`;
 
 
 const VOICE_CONFIG: VoiceConfig = {
+  httpUrl: VOICE_SERVER_HTTP,
   wsUrl: `${VOICE_SERVER_WS}/ws`,
-  authSecret: 'sYNOVfc5u8LAOTFb6Vr+WUBDivS8LMzyejlgTIYLSg4=',
   reconnectDelayMs: 2000,
   maxReconnectAttempts: 5,
   defaultSourceLanguage: 'vi',
@@ -211,10 +212,10 @@ function setupCSP(): void {
       ? "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'"
       : "script-src 'self' 'wasm-unsafe-eval'";
 
-    // WS is now handled exclusively in the main process — renderer only needs 'self'
+    // WS is handled in the main process, but the renderer fetches `/auth/login` over HTTP
     const connectSrc = isDev
-      ? "connect-src 'self' ws://localhost:5173"
-      : "connect-src 'self'";
+      ? `connect-src 'self' ws://localhost:5173 ${VOICE_SERVER_HTTP}`
+      : `connect-src 'self' ${VOICE_SERVER_HTTP}`;
 
     const csp = [
       "default-src 'self'",

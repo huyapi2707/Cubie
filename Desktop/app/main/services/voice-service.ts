@@ -99,10 +99,14 @@ export class MainVoiceService {
   private openConnection(): void {
     this.setStatus('connecting');
 
-    const token = encodeURIComponent(this.config.authSecret);
-    const url = `${this.config.wsUrl}?token=${token}`;
+    const settings = getSettings();
+    const token = settings.jwtToken || '';
 
-    this.ws = new WebSocket(url);
+    this.ws = new WebSocket(this.config.wsUrl, {
+      headers: {
+        Authorization: `Bearer ${token}`
+      }
+    });
 
     this.ws.on('open', () => {
       console.log('[VoiceService] Connected');

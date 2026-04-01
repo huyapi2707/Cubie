@@ -5,4 +5,5 @@ dist/
 *.tsbuildinfo
 .DS_Store
 coverage/
-test/
+/src/test/audio/
+/src/generated/prisma

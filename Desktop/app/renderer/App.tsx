@@ -1,23 +1,21 @@
 import { useEffect } from 'react';
+import { HashRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { AppLayout } from '@/components/layout';
 import { useAppStore } from '@/store';
 import { useTheme } from '@/hooks';
 import {
   DashboardPage,
   SettingsPage,
+  LoginPage,
+  MePage,
 } from '@/components/pages';
 
-function PageRouter() {
-  const activePage = useAppStore((s) => s.activePage);
-
-  switch (activePage) {
-    case 'dashboard':
-      return <DashboardPage />;
-    case 'settings':
-      return <SettingsPage />;
-    default:
-      return <DashboardPage />;
+function ProtectedRoute({ children }: { children: React.ReactNode }) {
+  const hasToken = useAppStore((s) => !!s.jwtToken);
+  if (!hasToken) {
+    return <Navigate to="/login" replace />;
   }
+  return <>{children}</>;
 }
 
 export default function App() {
@@ -26,13 +24,37 @@ export default function App() {
 
   // Hydrate persisted settings (theme, audio devices) from disk on startup
   const hydrate = useAppStore((s) => s._hydrate);
+  const hydrated = useAppStore((s) => s._hydrated);
+  
   useEffect(() => {
     hydrate();
   }, [hydrate]);
 
+  if (!hydrated) {
+    return null; 
+  }
+
   return (
-    <AppLayout>
-      <PageRouter />
-    </AppLayout>
+    <HashRouter>
+      <Routes>
+        <Route path="/login" element={<LoginPage />} />
+        
+        <Route 
+          element={
+            <ProtectedRoute>
+              <AppLayout>
+                <Outlet />
+              </AppLayout>
+            </ProtectedRoute>
+          }
+        >
+          <Route path="/" element={<DashboardPage />} />
+          <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/me" element={<MePage />} />
+        </Route>
+        
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </HashRouter>
   );
 }

@@ -4,6 +4,7 @@ import { config } from "../config/index.js";
 import { createChildLogger, metrics } from "../utils/index.js";
 import { SessionManager } from "../sessions/session-manager.js";
 import { AudioPipelineService } from "../services/audio-pipeline.js";
+import { QuotaService } from "../services/quota-service.js";
 import { isOpusEncoded, decodeOpus, encodeOpus, parseSampleRate } from "../services/opus-codec.js";
 import {
   ClientMessageSchema,
@@ -29,7 +30,8 @@ const log = createChildLogger({ module: "ws-gateway" });
 export class WebSocketGateway {
   constructor(
     private sessionManager: SessionManager,
-    private audioPipeline: AudioPipelineService
+    private audioPipeline: AudioPipelineService,
+    private quotaService: QuotaService
   ) {}
 
   /**
@@ -37,8 +39,20 @@ export class WebSocketGateway {
    * Called by the Fastify WebSocket route handler.
    */
   async handleConnection(ws: WebSocket, userId?: string): Promise<void> {
+    if (!userId) {
+      ws.close(1008, "User ID required");
+      return;
+    }
+
     metrics.increment("connections.total");
     metrics.increment("connections.active");
+
+    const hasQuota = await this.quotaService.checkQuota(userId);
+    if (!hasQuota) {
+      ws.close(4002, "Your quota has been exceeded");
+      metrics.decrement("connections.active");
+      return;
+    }
 
     let session;
 
@@ -66,6 +80,9 @@ export class WebSocketGateway {
       timestamp: Date.now(),
     } satisfies SessionCreatedMessage);
 
+    // Start quota tracking for this session
+    this.quotaService.startTracking(userId, sessionId, ws);
+
     // ─── Event Handlers ────────────────────────────────────────────────
 
     ws.on("message", (data: RawData, isBinary: boolean) => {
@@ -86,6 +103,7 @@ export class WebSocketGateway {
         { code, reason: reason.toString() },
         "Client disconnected"
       );
+      this.quotaService.stopTracking(sessionId);
       void this.handleDisconnect(sessionId);
     });
 
@@ -247,6 +265,9 @@ export class WebSocketGateway {
     } else {
       audioBuffer = data;
     }
+
+    // Increment usage counter
+    this.quotaService.incrementLocalUsage(sessionId, data.length);
 
     // Process audio immediately
     const result = await this.audioPipeline.processAudio(

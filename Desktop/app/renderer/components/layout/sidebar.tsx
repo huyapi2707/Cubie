@@ -3,7 +3,9 @@ import {
   Settings,
   PanelLeftClose,
   PanelLeft,
+  UserCircle,
 } from 'lucide-react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { useAppStore } from '@/store';
 import { Button } from '@/components/ui/button';
@@ -20,7 +22,8 @@ interface NavItem {
 }
 
 const mainNavItems: NavItem[] = [
-  { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { id: '', label: 'Dashboard', icon: LayoutDashboard },
+  { id: 'me', label: 'Me', icon: UserCircle },
 ];
 
 const bottomNavItems: NavItem[] = [
@@ -32,8 +35,9 @@ const bottomNavItems: NavItem[] = [
 export function Sidebar() {
   const collapsed = useAppStore((s) => s.sidebarCollapsed);
   const toggleSidebar = useAppStore((s) => s.toggleSidebar);
-  const activePage = useAppStore((s) => s.activePage);
-  const setActivePage = useAppStore((s) => s.setActivePage);
+  const navigate = useNavigate();
+  const location = useLocation();
+  const activePage = location.pathname.substring(1) || '';
 
 
   return (
@@ -68,7 +72,7 @@ export function Sidebar() {
               item={item}
               active={activePage === item.id}
               collapsed={collapsed}
-              onClick={() => setActivePage(item.id)}
+              onClick={() => navigate(`/${item.id}`)}
             />
           ))}
         </nav>
@@ -86,7 +90,7 @@ export function Sidebar() {
             item={item}
             active={activePage === item.id}
             collapsed={collapsed}
-            onClick={() => setActivePage(item.id)}
+            onClick={() => navigate(`/${item.id}`)}
           />
         ))}
       </div>

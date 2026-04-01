@@ -15,6 +15,8 @@ const DEFAULTS: UserSettings = {
   ttsGender: 'neutral',
   noiseGateDb: -50,
   boostUpRate: 1,
+  jwtToken: undefined,
+  userInfo: undefined,
 };
 
 const schema = {
@@ -29,6 +31,8 @@ const schema = {
   ttsGender: { type: 'string' as const, enum: ['male', 'female', 'neutral'], default: 'neutral' },
   noiseGateDb: { type: 'number' as const, minimum: -100, maximum: 0, default: -50 },
   boostUpRate: { type: 'number' as const, minimum: 1, maximum: 100, default: 1 },
+  jwtToken: { type: ['string', 'null'] as any },
+  userInfo: { type: ['object', 'null'] as any },
 };
 
 // ─── Singleton Instance ────────────────────────────────────────────
@@ -54,6 +58,8 @@ export function getSettings(): UserSettings {
     ttsGender: store.get('ttsGender') as 'male' | 'female' | 'neutral',
     noiseGateDb: store.get('noiseGateDb'),
     boostUpRate: store.get('boostUpRate'),
+    jwtToken: store.get('jwtToken'),
+    userInfo: store.get('userInfo'),
   };
 }
 

@@ -10,3 +10,6 @@ export type {
   TTSProviderName,
   TranslatorProviderName,
 } from "./voice-factory.js";
+
+export { QuotaService } from "./quota-service.js";
+export { UserService } from "./user-service.js";

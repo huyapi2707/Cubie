@@ -10,7 +10,8 @@ const EnvSchema = z.object({
     .enum(["development", "production", "test"])
     .default("development"),
 
-  REDIS_URL: z.string().optional().default(""),
+  DATABASE_URL: z.string().url().min(1),
+  REDIS_URL: z.string().url().min(1),
 
   AUTH_SECRET: z.string().min(1).default("dev-secret-key"),
 

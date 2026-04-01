@@ -100,8 +100,8 @@ export interface FileWriteResult {
 export type ThemeMode = 'light' | 'dark' | 'system';
 
 export interface VoiceConfig {
+  httpUrl: string;
   wsUrl: string;
-  authSecret: string;
   reconnectDelayMs: number;
   maxReconnectAttempts: number;
   defaultSourceLanguage: string;
@@ -126,6 +126,10 @@ export interface UserSettings {
   noiseGateDb: number;
   /** Audio boost-up gain multiplier. Range: 1.0 – 100.0, step 0.1. Default: 1.0 (no boost). */
   boostUpRate: number;
+  /** JWT token for authentication */
+  jwtToken?: string;
+  /** Authenticated user info */
+  userInfo?: any;
 }
 
 /** A virtual audio line (cable pair) with matched input/output devices. */

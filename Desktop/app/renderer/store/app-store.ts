@@ -10,14 +10,18 @@ interface AppState {
   /** Update local theme state without persisting — used when main process pushes a change */
   _setThemeFromMain: (theme: ThemeMode) => void;
 
+  // Auth
+  jwtToken: string | null;
+  userInfo: any | null;
+  setAuth: (token: string, user: any) => void;
+  logout: () => void;
+
   // Sidebar
   sidebarCollapsed: boolean;
   toggleSidebar: () => void;
   setSidebarCollapsed: (collapsed: boolean) => void;
 
-  // Navigation
-  activePage: string;
-  setActivePage: (page: string) => void;
+
 
   // App Info
   version: string;
@@ -89,14 +93,24 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ theme });
   },
 
+  // Auth
+  jwtToken: null,
+  userInfo: null,
+  setAuth: (token, user) => {
+    set({ jwtToken: token, userInfo: user });
+    persistSettings({ jwtToken: token, userInfo: user });
+  },
+  logout: () => {
+    set({ jwtToken: null, userInfo: null });
+    persistSettings({ jwtToken: null, userInfo: null });
+  },
+
   // Sidebar
   sidebarCollapsed: false,
   toggleSidebar: () => set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
   setSidebarCollapsed: (collapsed) => set({ sidebarCollapsed: collapsed }),
 
-  // Navigation
-  activePage: 'dashboard',
-  setActivePage: (page) => set({ activePage: page }),
+
 
   // App Info
   version: '1.0.0',
@@ -203,6 +217,8 @@ export const useAppStore = create<AppState>((set, get) => ({
         patch.ttsGender = settings.ttsGender || 'neutral';
         patch.noiseGateDb = settings.noiseGateDb ?? -50;
         patch.boostUpRate = settings.boostUpRate ?? 1;
+        patch.jwtToken = settings.jwtToken || null;
+        patch.userInfo = settings.userInfo || null;
       }
 
       set(patch as Partial<AppState>);

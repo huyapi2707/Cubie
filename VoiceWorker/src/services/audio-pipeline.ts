@@ -18,7 +18,7 @@ let AUDIO_DEBUG_DIR = "";
 let audioSeq = 0;
 if (isDev) {
   const __dirname = path.dirname(fileURLToPath(import.meta.url));
-  AUDIO_DEBUG_DIR = path.resolve(__dirname, "..", "..", "test", "audio");
+  AUDIO_DEBUG_DIR = path.resolve(__dirname, "..", "test", "audio");
   fs.mkdirSync(AUDIO_DEBUG_DIR, { recursive: true });
 }
 
