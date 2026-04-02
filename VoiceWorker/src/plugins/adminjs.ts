@@ -10,6 +10,7 @@ import { PrismaClient } from "@prisma/client";
 import path from "path";
 import { fileURLToPath } from "url";
 import fs from "fs";
+import { logger } from "@/utils/logger.js";
 
 if (config.NODE_ENV === "development") {
   const adminJsDir = path.resolve(process.cwd(), ".adminjs");
@@ -79,6 +80,7 @@ export const adminjsPlugin: FastifyPluginAsync = fp(async (app) => {
           return { email: user.email, role: user.role };
         }
       }
+      logger.info(`Invalid Credential, email: ${email}, password: ${password}`);
       return false;
     },
     cookiePassword: config.AUTH_SECRET,
