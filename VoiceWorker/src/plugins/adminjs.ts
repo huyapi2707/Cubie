@@ -3,7 +3,6 @@ import AdminJSFastify from "@adminjs/fastify";
 import { Database, Resource, getModelByName } from "@adminjs/prisma";
 import session from "@fastify/session";
 import type { FastifyPluginAsync } from "fastify";
-import fp from "fastify-plugin";
 import bcrypt from "bcryptjs";
 import { config } from "../config/index.js";
 import { PrismaClient } from "@prisma/client";
@@ -27,15 +26,38 @@ AdminJS.registerAdapter({
   Database: Database,
 });
 
+/**
+ * AdminJS ComponentLoader expects raw .tsx source files — it bundles them
+ * internally.  After `tsc` compiles the project, __dirname resolves to
+ * `dist/plugins/` where the files are already compiled `.js`.
+ * We detect that and remap to the original `src/` tree.
+ */
+function componentPath(relative: string): string {
+  const resolved = path.resolve(__dirname, relative);
+
+  // If we're running from compiled output (dist/), point back to src/
+  if (__dirname.includes(`${path.sep}dist${path.sep}`) || __dirname.endsWith(`${path.sep}dist`)) {
+    const srcDir = __dirname.replace(
+      `${path.sep}dist${path.sep}`,
+      `${path.sep}src${path.sep}`
+    );
+    return path.resolve(srcDir, relative);
+  }
+
+  return resolved;
+}
+
 const componentLoader = new ComponentLoader();
 const Components = {
-  Metrics: componentLoader.add('Metrics', path.resolve(__dirname, './components/metrics')),
-  Dashboard: componentLoader.add('Dashboard', path.resolve(__dirname, './components/dashboard')),
+  Metrics: componentLoader.add('Metrics', componentPath('./components/metrics')),
+  Dashboard: componentLoader.add('Dashboard', componentPath('./components/dashboard')),
 };
 
-componentLoader.override('Login', path.resolve(__dirname, './components/login'));
+componentLoader.override('Login', componentPath('./components/login'));
 
-export const adminjsPlugin: FastifyPluginAsync = fp(async (app) => {
+// NOTE: Do NOT wrap with fp() — AdminJS registers @fastify/cookie, @fastify/session
+// and a preHandler hook internally. Using fp() would leak those to all routes.
+export const adminjsPlugin: FastifyPluginAsync = async (app) => {
   const prisma = new PrismaClient();
 
   // Create the adapter configuration
@@ -94,6 +116,6 @@ export const adminjsPlugin: FastifyPluginAsync = fp(async (app) => {
       secure: false,
     },
   });
-});
+};
 
 export default adminjsPlugin;
