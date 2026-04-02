@@ -10,7 +10,7 @@ import { PrismaClient } from "@prisma/client";
 import path from "path";
 import { fileURLToPath } from "url";
 import fs from "fs";
-import { logger } from "@/utils/logger.js";
+import { logger } from "../utils/logger.js";
 
 if (config.NODE_ENV === "development") {
   const adminJsDir = path.resolve(process.cwd(), ".adminjs");
