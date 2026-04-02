@@ -2,12 +2,10 @@
 set -e
 
 APP_NAME="VoiceWorker"
-APP_DIR="~/apps/Cubie/VoiceWorker"
 HEALTH_URL="http://localhost:3001/health"
 
 echo "🚀 Starting deployment..."
 
-cd $APP_DIR
 
 # prevent concurrent deploy
 LOCK_FILE="/tmp/deploy.lock"
