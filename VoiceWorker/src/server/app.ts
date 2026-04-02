@@ -33,6 +33,7 @@ export async function createServer() {
   // ─── Fastify App ─────────────────────────────────────────────────────
   const app = Fastify({
     logger: false, // We use our own Pino instance
+    trustProxy: true,
     routerOptions: {
       maxParamLength: 200,
     },
