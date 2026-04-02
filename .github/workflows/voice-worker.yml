@@ -26,5 +26,5 @@ jobs:
         run: |
           ssh ${{ secrets.REMOTE_USER }}@${{ secrets.REMOTE_HOST }} << EOF
             cd ~/apps/Cubie/VoiceWorker
-            sudo ./infrastructure/deploy.sh
+            bash ./infrastructure/deploy.sh
           EOF
