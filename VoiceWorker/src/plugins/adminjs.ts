@@ -81,12 +81,12 @@ export const adminjsPlugin: FastifyPluginAsync = fp(async (app) => {
       }
       return false;
     },
-    cookiePassword: config.AUTH_SECRET || "adminjs-super-secret-password-123",
+    cookiePassword: config.AUTH_SECRET,
     cookieName: "adminjs",
   }, app, {
     store: new session.MemoryStore(),
     saveUninitialized: true,
-    secret: config.AUTH_SECRET || "adminjs-super-secret-password-123",
+    secret: config.AUTH_SECRET,
     cookie: {
       secure: config.NODE_ENV === "production",
     },
