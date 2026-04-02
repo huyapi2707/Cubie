@@ -33,7 +33,9 @@ export async function createServer() {
   // ─── Fastify App ─────────────────────────────────────────────────────
   const app = Fastify({
     logger: false, // We use our own Pino instance
-    maxParamLength: 200,
+    routerOptions: {
+      maxParamLength: 200,
+    },
     bodyLimit: config.WS_MAX_PAYLOAD_BYTES,
   });
 
