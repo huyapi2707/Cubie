@@ -1,0 +1,30 @@
+name: Deploy VoiceWorker
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'VoiceWorker/**'
+
+concurrency:
+  group: deploy-voice-worker
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Run deploy script
+        run: |
+          ssh ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << EOF
+            cd ~/apps/Cubie/VoiceWorker
+            ./deploy.sh
+          EOF
