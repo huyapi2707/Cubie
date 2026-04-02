@@ -36,7 +36,7 @@ IDS=$(pm2 jlist | jq -r ".[] | select(.name==\"$APP_NAME\") | .pm_id")
 # if app not running yet → first deploy
 if [ -z "$IDS" ]; then
   echo "⚡ First deploy → starting app"
-  pm2 start ecosystem.config.js
+  pm2 start ./infrastructure/ecosystem.config.js
   pm2 save
   exit 0
 fi
