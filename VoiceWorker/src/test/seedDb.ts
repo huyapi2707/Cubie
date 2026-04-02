@@ -13,7 +13,7 @@ const prisma = new PrismaClient({
 async function main() {
   console.log('Seeding database for Cubie VoiceWorker...');
 
-  const adminPassword = await bcrypt.hash('admin123', 10);
+  const adminPassword = await bcrypt.hash('admin1234', 10);
 
   // Create Admin User
   const adminUser = await prisma.user.upsert({
@@ -34,7 +34,7 @@ async function main() {
   
   console.log('✅ Admin user ready:', adminUser.email);
 
-  const customerPassword = await bcrypt.hash('customer123', 10);
+  const customerPassword = await bcrypt.hash('customer1234', 10);
 
   // Create Customer User
   const customerUser = await prisma.user.upsert({
