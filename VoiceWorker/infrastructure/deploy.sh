@@ -47,9 +47,6 @@ for id in $IDS; do
 
   pm2 reload $id
 
-  echo "⏳ Waiting..."
-  sleep 5
-
   echo "🩺 Health check..."
   if ! curl -f --max-time 3 $HEALTH_URL > /dev/null 2>&1; then
     echo "❌ Instance $id failed!"
