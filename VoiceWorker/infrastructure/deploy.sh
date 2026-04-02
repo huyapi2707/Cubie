@@ -45,7 +45,7 @@ fi
 for id in $IDS; do
   echo "🔄 Reloading instance $id..."
 
-  pm2 reload $APP_NAME --only $id
+  pm2 reload $id
 
   echo "⏳ Waiting..."
   sleep 5
