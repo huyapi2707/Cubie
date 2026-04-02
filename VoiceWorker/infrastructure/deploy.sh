@@ -2,7 +2,7 @@
 set -e
 
 APP_NAME="VoiceWorker"
-APP_DIR="~/apps/VoiceWorker"
+APP_DIR="~/apps/Cubie/VoiceWorker"
 HEALTH_URL="http://localhost:3001/health"
 
 echo "🚀 Starting deployment..."
