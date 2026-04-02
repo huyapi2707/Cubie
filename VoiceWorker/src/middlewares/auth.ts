@@ -33,13 +33,22 @@ export const authenticate = async (req: FastifyRequest, reply: FastifyReply) => 
     }
 
     if (!token) {
+      // Fallback: Check if an AdminJS session is active
+      if ((req as any).session && (req as any).session.adminUser) {
+        req.user = { 
+          userId: "admin-session", 
+          email: (req as any).session.adminUser.email, 
+          role: "ADMIN" 
+        };
+        return;
+      }
       return reply.status(401).send({ error: "Missing or invalid authorization" });
     }
 
     const decoded = jwt.verify(token, config.AUTH_SECRET) as JwtPayload;
     
     req.user = decoded;
-  } catch (err) {
+  } catch {
     return reply.status(401).send({ error: "Unauthorized or token expired" });
   }
 };

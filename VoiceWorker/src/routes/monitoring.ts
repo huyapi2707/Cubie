@@ -2,6 +2,7 @@ import type { FastifyPluginAsync } from "fastify";
 import { metrics } from "../utils/index.js";
 import type { WorkerPool } from "../workers/index.js";
 import type { SessionManager } from "../sessions/index.js";
+import { authenticate, authorize } from "../middlewares/auth.js";
 
 export interface MonitoringOptions {
   workerPool: WorkerPool;
@@ -24,7 +25,7 @@ export const monitoringRoutes: FastifyPluginAsync<MonitoringOptions> = async (ap
   });
 
   /** Metrics endpoint for monitoring */
-  app.get("/metrics", async () => {
+  app.get("/metrics", { preHandler: [authenticate, authorize(["ADMIN"])] }, async () => {
     const snapshot = metrics.snapshot();
     const workerStatus = workerPool.getStatus();
 

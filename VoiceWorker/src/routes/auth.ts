@@ -25,7 +25,7 @@ export const authRoutes: FastifyPluginAsync<AuthOptions> = async (app, opts) => 
 
     const { email, password } = parsed.data;
 
-    let user = await userService.findByEmail(email);
+    const user = await userService.findByEmail(email);
 
     if (!user) {
       return reply.status(401).send({ error: "Invalid credentials" });

@@ -7,3 +7,4 @@ dist/
 coverage/
 /src/test/audio/
 /src/generated/prisma
+.adminjs/

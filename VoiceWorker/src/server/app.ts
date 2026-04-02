@@ -39,6 +39,9 @@ export async function createServer() {
 
   // ─── Plugins ─────────────────────────────────────────────────────────
   await app.register(prismaPlugin);
+  
+  const { adminjsPlugin } = await import("../plugins/adminjs.js");
+  await app.register(adminjsPlugin);
 
   await app.register(fastifyCors, {
     origin: true,
