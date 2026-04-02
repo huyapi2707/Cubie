@@ -134,6 +134,12 @@ export class MainVoiceService {
         return;
       }
 
+      if (code === 4002) {
+        this.lastErrors = ['Quota Exceeded — you have reached your usage limit'];
+        this.setStatus('error');
+        return;
+      }
+
       if (code !== 1000 && this.status !== 'disconnected') {
         const settings = getSettings();
         if (settings.autoReconnect) {
