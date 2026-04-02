@@ -90,7 +90,8 @@ export const adminjsPlugin: FastifyPluginAsync = fp(async (app) => {
     saveUninitialized: true,
     secret: config.AUTH_SECRET,
     cookie: {
-      secure: config.NODE_ENV === "production",
+      // TODO: Set to `config.NODE_ENV === "production"` once HTTPS is enabled
+      secure: false,
     },
   });
 });
