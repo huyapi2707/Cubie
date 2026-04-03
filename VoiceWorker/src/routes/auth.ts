@@ -3,6 +3,7 @@ import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 import { config } from "../config/index.js";
 import type { UserService } from "../services/index.js";
+import { authenticate } from "../middlewares/auth.js";
 import { z } from "zod";
 
 export interface AuthOptions {
@@ -43,5 +44,14 @@ export const authRoutes: FastifyPluginAsync<AuthOptions> = async (app, opts) => 
     );
 
     return { token, user };
+  });
+
+  /** Verify token and return the current user profile */
+  app.get("/auth/me", { preHandler: [authenticate] }, async (req, reply) => {
+    const user = await userService.findById(req.user!.userId);
+    if (!user) {
+      return reply.status(404).send({ error: "User not found" });
+    }
+    return { user };
   });
 };

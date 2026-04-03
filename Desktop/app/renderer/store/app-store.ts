@@ -222,6 +222,31 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
 
       set(patch as Partial<AppState>);
+
+      // Verify stored token is still valid
+      const token = patch.jwtToken as string | null;
+      if (token && voiceConfig?.httpUrl) {
+        try {
+          const res = await fetch(`${voiceConfig.httpUrl}/auth/me`, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+
+          if (res.ok) {
+            const data = await res.json();
+            // Refresh userInfo with latest from server
+            set({ userInfo: data.user });
+            persistSettings({ userInfo: data.user });
+          } else {
+            // Token expired or invalid — logout
+            console.warn('[Auth] Token expired or invalid, logging out');
+            set({ jwtToken: null, userInfo: null });
+            persistSettings({ jwtToken: null, userInfo: null });
+          }
+        } catch {
+          // Server unreachable — keep token, let user retry later
+          console.warn('[Auth] Could not reach server to verify token');
+        }
+      }
     } catch {
       // Settings not available (e.g. running outside Electron)
       set({ _hydrated: true });
