@@ -1,5 +1,6 @@
 import type { FastifyRequest, FastifyReply } from "fastify";
 import jwt from "jsonwebtoken";
+import { Redis } from "ioredis";
 import { config } from "../config/index.js";
 import type { Role } from "@prisma/client";
 import { logger } from "../utils/logger.js";
@@ -17,8 +18,55 @@ declare module "fastify" {
   }
 }
 
+// Lazy-initialized Redis client for session lookups
+let redis: Redis | null = null;
+function getRedis(): Redis {
+  if (!redis) {
+    redis = new Redis(config.REDIS_URL);
+  }
+  return redis;
+}
+
+/**
+ * Parses the adminjs session cookie from raw headers and looks up
+ * the session data directly in Redis. This is needed because AdminJS
+ * encapsulates @fastify/session in its own plugin scope, making
+ * req.session unavailable on API routes.
+ */
+async function getAdminSession(req: FastifyRequest): Promise<{ email: string } | null> {
+  try {
+    const cookieHeader = req.headers.cookie;
+    if (!cookieHeader) return null;
+
+    // Parse "adminjs" cookie value from the header
+    const match = cookieHeader.match(/(?:^|;\s*)adminjs=([^;]+)/);
+    if (!match) return null;
+
+    const rawCookie = decodeURIComponent(match[1]);
+
+    // The cookie is signed by @fastify/cookie (format: "sessionId.signature")
+    // Strip the signature to get the plain session ID
+    const dotIndex = rawCookie.indexOf(".");
+    const sessionId = dotIndex !== -1 ? rawCookie.substring(0, dotIndex) : rawCookie;
+    const redisKey = `adminjs:sess:${sessionId}`;
+
+    const raw = await getRedis().get(redisKey);
+    if (!raw) return null;
+
+    const session = JSON.parse(raw);
+    if (session?.adminUser?.email) {
+      return { email: session.adminUser.email };
+    }
+    return null;
+  } catch (err) {
+    logger.warn({ err }, "Failed to look up AdminJS session from Redis");
+    return null;
+  }
+}
+
 /**
  * Validates the JWT in the Authorization header.
+ * Falls back to AdminJS session cookie if no JWT is present.
  * Should be used as a preHandler hook.
  */
 export const authenticate = async (req: FastifyRequest, reply: FastifyReply) => {
@@ -34,13 +82,14 @@ export const authenticate = async (req: FastifyRequest, reply: FastifyReply) => 
     }
 
     if (!token) {
-      // Fallback: Check if an AdminJS session is active
-      if ((req as any).session && (req as any).session.adminUser) {
-        logger.info(`AdminJS session found: ${(req as any).session}`);
-        req.user = { 
-          userId: "admin-session", 
-          email: (req as any).session.adminUser.email, 
-          role: "ADMIN" 
+      // Fallback: look up AdminJS session from Redis via cookie
+      const adminSession = await getAdminSession(req);
+      if (adminSession) {
+        logger.info({ adminUser: adminSession }, "AdminJS session found");
+        req.user = {
+          userId: "admin-session",
+          email: adminSession.email,
+          role: "ADMIN",
         };
         return;
       }

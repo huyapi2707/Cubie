@@ -1,9 +1,11 @@
 import AdminJS, { ComponentLoader, type AdminJSOptions } from "adminjs";
 import AdminJSFastify from "@adminjs/fastify";
 import { Database, Resource, getModelByName } from "@adminjs/prisma";
-import session from "@fastify/session";
+
 import type { FastifyPluginAsync } from "fastify";
 import bcrypt from "bcryptjs";
+import { Redis } from "ioredis";
+import RedisStore from "connect-redis";
 import { config } from "../config/index.js";
 import { PrismaClient } from "@prisma/client";
 import path from "path";
@@ -60,6 +62,13 @@ componentLoader.override('Login', componentPath('./components/login'));
 export const adminjsPlugin: FastifyPluginAsync = async (app) => {
   const prisma = new PrismaClient();
 
+  // ─── Redis Session Store (shared across PM2 cluster workers) ────────
+  const redisClient = new Redis(config.REDIS_URL);
+  const redisStore = new RedisStore({
+    client: redisClient,
+    prefix: "adminjs:sess:",
+  });
+
   // Create the adapter configuration
   const adminOptions: AdminJSOptions = {
     resources: [
@@ -108,12 +117,14 @@ export const adminjsPlugin: FastifyPluginAsync = async (app) => {
     cookiePassword: config.AUTH_SECRET,
     cookieName: "adminjs",
   }, app, {
-    store: new session.MemoryStore(),
-    saveUninitialized: true,
+    store: redisStore,
+    saveUninitialized: false,
     secret: config.AUTH_SECRET,
     cookie: {
-      // TODO: Set to `config.NODE_ENV === "production"` once HTTPS is enabled
       secure: false,
+      httpOnly: true,
+      sameSite: "lax" as const,
+      path: "/",
     },
   });
 };
