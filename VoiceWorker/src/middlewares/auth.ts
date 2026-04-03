@@ -2,6 +2,7 @@ import type { FastifyRequest, FastifyReply } from "fastify";
 import jwt from "jsonwebtoken";
 import { config } from "../config/index.js";
 import type { Role } from "@prisma/client";
+import { logger } from "../utils/logger.js";
 
 export interface JwtPayload {
   userId: string;
@@ -35,6 +36,7 @@ export const authenticate = async (req: FastifyRequest, reply: FastifyReply) => 
     if (!token) {
       // Fallback: Check if an AdminJS session is active
       if ((req as any).session && (req as any).session.adminUser) {
+        logger.info(`AdminJS session found: ${(req as any).session}`);
         req.user = { 
           userId: "admin-session", 
           email: (req as any).session.adminUser.email, 
