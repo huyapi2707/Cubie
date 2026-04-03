@@ -129,6 +129,13 @@ export class SessionManager {
   }
 
   /**
+   * Get detailed metadata for all active sessions.
+   */
+  getActiveSessions(): SessionMetadata[] {
+    return Array.from(this.sessions.values()).map((s) => this.toMetadata(s));
+  }
+
+  /**
    * Clean up all sessions and stop the heartbeat monitor.
    */
   async shutdown(): Promise<void> {

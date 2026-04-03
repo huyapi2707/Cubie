@@ -79,10 +79,10 @@ export async function createServer() {
   // ─── HTTP & WebSocket Routes ─────────────────────────────────────────
 
   await app.register(healthRoute);
-  await app.register(monitoringRoutes, { workerPool, sessionManager });
+  await app.register(monitoringRoutes, { workerPool, sessionManager, quotaService });
   await app.register(wsRoute, { wsGateway });
   await app.register(userRoutes, { userService });
-  await app.register(authRoutes, { userService });
+  await app.register(authRoutes, { userService, quotaService });
 
   // ─── Lifecycle Hooks ─────────────────────────────────────────────────
 

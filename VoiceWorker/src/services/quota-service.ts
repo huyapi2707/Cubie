@@ -46,6 +46,15 @@ export class QuotaService {
   }
 
   /**
+   * Returns the ISO timestamp when the current 4-hour quota window resets.
+   */
+  getNextRefreshTime(): string {
+    const bucketMs = 4 * 60 * 60 * 1000;
+    const nextBucket = (this.getCurrentBucket() + 1) * bucketMs;
+    return new Date(nextBucket).toISOString();
+  }
+
+  /**
    * Check if a user currently has quota available.
    */
   async checkQuota(userId: string): Promise<boolean> {
@@ -69,6 +78,36 @@ export class QuotaService {
   incrementLocalUsage(sessionId: string, value: number): void {
     const current = this.localUsage.get(sessionId) || 0;
     this.localUsage.set(sessionId, current + value);
+  }
+
+  /**
+   * Get the current usage and max quota for a user in the active bucket.
+   */
+  async getUsage(userId: string): Promise<{ usage: number; maxQuota: number; bucket: number }> {
+    const bucket = this.getCurrentBucket();
+    const usageKey = `user:${userId}:usage:${bucket}`;
+    const maxQuota = await this.getMaxQuota(userId);
+
+    try {
+      const usageStr = await this.redis.get(usageKey);
+      const usage = usageStr ? parseInt(usageStr, 10) : 0;
+      return { usage, maxQuota, bucket };
+    } catch (err) {
+      log.warn({ err, userId }, "Failed to read usage from Redis");
+      return { usage: 0, maxQuota, bucket };
+    }
+  }
+
+  /**
+   * Client-safe quota info: only percentage remaining + next reset time.
+   * Never exposes raw byte values to the client.
+   */
+  async getClientQuota(userId: string): Promise<{ remainingPercent: number; refreshesAt: string }> {
+    const { usage, maxQuota } = await this.getUsage(userId);
+    const remainingPercent = maxQuota > 0
+      ? Math.max(Math.round(((maxQuota - usage) / maxQuota) * 100), 0)
+      : 100;
+    return { remainingPercent, refreshesAt: this.getNextRefreshTime() };
   }
 
   /**
@@ -113,6 +152,17 @@ export class QuotaService {
             socket.close(4002, "4-Hour Quota Exceeded");
           }
           this.stopTracking(sessionId);
+        } else if (socket.readyState === socket.OPEN) {
+          // Send real-time quota updates — percentage only, no raw bytes
+          const remainingPercent = maxQuota > 0
+            ? Math.max(Math.round(((maxQuota - totalUsage) / maxQuota) * 100), 0)
+            : 100;
+          socket.send(JSON.stringify({
+            type: "quota_update",
+            remainingPercent,
+            refreshesAt: this.getNextRefreshTime(),
+            timestamp: Date.now()
+          }));
         }
 
       } catch (err) {

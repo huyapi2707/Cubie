@@ -1,7 +1,6 @@
 import AdminJS, { ComponentLoader, type AdminJSOptions } from "adminjs";
 import AdminJSFastify from "@adminjs/fastify";
 import { Database, Resource, getModelByName } from "@adminjs/prisma";
-
 import type { FastifyPluginAsync } from "fastify";
 import bcrypt from "bcryptjs";
 import { Redis } from "ioredis";
@@ -53,6 +52,7 @@ const componentLoader = new ComponentLoader();
 const Components = {
   Metrics: componentLoader.add('Metrics', componentPath('./components/metrics')),
   Dashboard: componentLoader.add('Dashboard', componentPath('./components/dashboard')),
+  QuotaUsage: componentLoader.add('QuotaUsage', componentPath('./components/quota-usage')),
 };
 
 componentLoader.override('Login', componentPath('./components/login'));
@@ -95,6 +95,10 @@ export const adminjsPlugin: FastifyPluginAsync = async (app) => {
       metrics: {
         component: Components.Metrics,
         icon: 'Pulse',
+      },
+      quotaUsage: {
+        component: Components.QuotaUsage,
+        icon: 'Activity',
       },
     },
   };

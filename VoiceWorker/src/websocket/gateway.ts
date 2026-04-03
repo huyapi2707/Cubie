@@ -266,8 +266,7 @@ export class WebSocketGateway {
       audioBuffer = data;
     }
 
-    // Increment usage counter
-    this.quotaService.incrementLocalUsage(sessionId, data.length);
+
 
     // Process audio immediately
     const result = await this.audioPipeline.processAudio(
@@ -307,6 +306,8 @@ export class WebSocketGateway {
       const opusAudio = encodeOpus(result.tts.audioBuffer, result.tts.sampleRate);
       session.websocket.send(opusAudio, { binary: true });
       metrics.increment("audio.bytes_sent", opusAudio.length);
+      // Increment usage counter
+      this.quotaService.incrementLocalUsage(sessionId, audioBuffer.length);
     }
   }
 

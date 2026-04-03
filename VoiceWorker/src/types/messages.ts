@@ -78,10 +78,18 @@ export interface SessionEndedMessage {
   timestamp: number;
 }
 
+export interface QuotaUpdateMessage {
+  type: "quota_update";
+  remainingPercent: number;
+  refreshesAt: string;
+  timestamp: number;
+}
+
 export type ServerMessage =
   | TranscriptMessage
   | TranslationMessage
   | ErrorMessage
   | SessionCreatedMessage
   | PongMessage
-  | SessionEndedMessage;
+  | SessionEndedMessage
+  | QuotaUpdateMessage;

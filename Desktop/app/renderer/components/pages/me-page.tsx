@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { useAppStore } from '@/store';
 import { Button } from '@/components/ui/button';
 import { 
@@ -6,19 +7,164 @@ import {
   Shield, 
   Activity, 
   Fingerprint,
-  CheckCircle2
+  CheckCircle2,
+  Timer
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
+// ─── Countdown Hook ─────────────────────────────────────────────────
+
+function useCountdown(targetIso: string | undefined) {
+  const [now, setNow] = useState(Date.now());
+
+  useEffect(() => {
+    if (!targetIso) return;
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [targetIso]);
+
+  if (!targetIso) return null;
+
+  const diff = Math.max(new Date(targetIso).getTime() - now, 0);
+  const h = Math.floor(diff / 3_600_000);
+  const m = Math.floor((diff % 3_600_000) / 60_000);
+  const s = Math.floor((diff % 60_000) / 1000);
+
+  return { h, m, s, total: diff };
+}
+
+// ─── Circular Progress Ring ──────────────────────────────────────────
+
+function QuotaRing({ percent }: { percent: number }) {
+  const size = 140;
+  const stroke = 10;
+  const radius = (size - stroke) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const filled = (percent / 100) * circumference;
+  const gap = circumference - filled;
+
+  // Color tiers
+  const ringColor =
+    percent <= 10
+      ? 'hsl(0, 72%, 56%)'    // red — critical
+      : percent <= 25
+      ? 'hsl(25, 95%, 53%)'   // orange — warning
+      : 'hsl(var(--primary))'; // theme primary — healthy
+
+  const glowColor =
+    percent <= 10
+      ? 'rgba(239,68,68,0.35)'
+      : percent <= 25
+      ? 'rgba(249,115,22,0.3)'
+      : 'rgba(99,102,241,0.25)';
+
+  return (
+    <div className="relative flex items-center justify-center" style={{ width: size, height: size }}>
+      {/* Subtle glow behind ring */}
+      <div
+        className="absolute rounded-full blur-2xl pointer-events-none"
+        style={{
+          width: size * 0.7,
+          height: size * 0.7,
+          background: glowColor,
+        }}
+      />
+
+      <svg
+        width={size}
+        height={size}
+        className="transform -rotate-90"
+        style={{ filter: `drop-shadow(0 0 6px ${glowColor})` }}
+      >
+        {/* Background track */}
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          fill="none"
+          stroke="hsl(var(--muted))"
+          strokeWidth={stroke}
+          opacity={0.25}
+        />
+        {/* Progress arc */}
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          fill="none"
+          stroke={ringColor}
+          strokeWidth={stroke}
+          strokeDasharray={`${filled} ${gap}`}
+          strokeLinecap="round"
+          className="transition-all duration-1000 ease-out"
+        />
+      </svg>
+
+      {/* Center label */}
+      <div className="absolute inset-0 flex flex-col items-center justify-center">
+        <span
+          className="text-3xl font-extrabold tracking-tight"
+          style={{ color: ringColor }}
+        >
+          {percent}%
+        </span>
+        <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mt-0.5">
+          remaining
+        </span>
+      </div>
+    </div>
+  );
+}
+
+// ─── Main Page ──────────────────────────────────────────────────────
+
 export function MePage() {
   const userInfo = useAppStore((s) => s.userInfo);
+  const jwtToken = useAppStore((s) => s.jwtToken);
+  const quotaInfo = useAppStore((s) => s.quotaInfo);
   const logout = useAppStore((s) => s.logout);
+
+  const [localQuota, setLocalQuota] = useState(quotaInfo);
+  const [loadingQuota, setLoadingQuota] = useState(!quotaInfo);
+
+  // Keep localQuota in sync with real-time WS updates from the store
+  useEffect(() => {
+    if (quotaInfo) setLocalQuota(quotaInfo);
+  }, [quotaInfo]);
+
+  useEffect(() => {
+    async function fetchFreshQuota() {
+      if (!jwtToken) return;
+      try {
+        const config = await window.electronAPI?.voice?.getConfig();
+        if (!config?.httpUrl) return;
+
+        const res = await fetch(`${config.httpUrl}/auth/me`, {
+          headers: { Authorization: `Bearer ${jwtToken}` },
+        });
+        
+        if (res.ok) {
+          const data = await res.json();
+          if (data.quota) {
+            setLocalQuota(data.quota);
+            useAppStore.setState({ userInfo: data.user, quotaInfo: data.quota });
+          }
+        }
+      } catch (err) {
+        console.warn('Failed to fetch fresh quota:', err);
+      } finally {
+        setLoadingQuota(false);
+      }
+    }
+    fetchFreshQuota();
+  }, [jwtToken]);
+
+  const countdown = useCountdown(localQuota?.refreshesAt);
 
   if (!userInfo) {
     return null;
   }
 
-  // Generate an initial from name or email
   const initials = (userInfo.name || userInfo.email || 'U').substring(0, 2).toUpperCase();
 
   return (
@@ -67,17 +213,90 @@ export function MePage() {
               Account Details
             </h3>
             
+            {/* Quota Card — Redesigned */}
+            <div className="p-6 rounded-2xl border border-border/40 bg-card shadow-sm col-span-full relative overflow-hidden">
+               {/* Decorative background glow */}
+               <div className="absolute -top-20 -right-20 w-60 h-60 bg-primary/5 rounded-full blur-3xl pointer-events-none" />
+
+               <div className="flex items-center justify-between mb-6 relative z-10">
+                 <div className="flex items-center gap-3">
+                   <div className="p-2.5 rounded-xl bg-primary/10 text-primary">
+                     <Activity className="h-4 w-4" />
+                   </div>
+                   <h4 className="font-semibold">Quota Status</h4>
+                 </div>
+                 {loadingQuota && <span className="text-xs text-muted-foreground animate-pulse">Refreshing…</span>}
+               </div>
+
+               {localQuota ? (
+                 <div className="flex flex-col sm:flex-row items-center gap-8 relative z-10">
+                   {/* Circular progress ring */}
+                   <QuotaRing percent={localQuota.remainingPercent} />
+
+                   {/* Info side */}
+                   <div className="flex-1 space-y-4">
+                     {/* Status label */}
+                     <div>
+                       <p className={cn(
+                         "text-sm font-semibold",
+                         localQuota.remainingPercent <= 10 ? "text-destructive" :
+                         localQuota.remainingPercent <= 25 ? "text-amber-500" :
+                         "text-emerald-500"
+                       )}>
+                         {localQuota.remainingPercent <= 10
+                           ? "Quota almost depleted"
+                           : localQuota.remainingPercent <= 25
+                           ? "Quota running low"
+                           : "Quota healthy"}
+                       </p>
+                       <p className="text-xs text-muted-foreground mt-1">
+                         Your quota resets automatically in a rolling window.
+                       </p>
+                     </div>
+
+                     {/* Countdown */}
+                     {countdown && (
+                       <div className="flex items-center gap-3 p-3 rounded-xl bg-muted/40 border border-border/30">
+                         <Timer className="h-4 w-4 text-muted-foreground shrink-0" />
+                         <div>
+                           <p className="text-xs text-muted-foreground font-medium">Resets in</p>
+                           <p className="text-sm font-bold tracking-wide tabular-nums text-foreground">
+                             {String(countdown.h).padStart(2, '0')}
+                             <span className="text-muted-foreground mx-0.5">:</span>
+                             {String(countdown.m).padStart(2, '0')}
+                             <span className="text-muted-foreground mx-0.5">:</span>
+                             {String(countdown.s).padStart(2, '0')}
+                           </p>
+                         </div>
+                       </div>
+                     )}
+
+                     {/* Thin progress bar (compact duplicate for quick glance) */}
+                     <div className="space-y-1.5">
+                       <div className="h-1.5 w-full bg-secondary/50 rounded-full overflow-hidden">
+                         <div 
+                           className={cn(
+                             "h-full rounded-full transition-all duration-1000 ease-out",
+                             localQuota.remainingPercent <= 10 ? "bg-destructive" :
+                             localQuota.remainingPercent <= 25 ? "bg-amber-500" : "bg-primary"
+                           )}
+                           style={{ width: `${localQuota.remainingPercent}%` }}
+                         />
+                       </div>
+                     </div>
+                   </div>
+                 </div>
+               ) : (
+                 <p className="text-sm text-muted-foreground relative z-10">Quota information unavailable.</p>
+               )}
+            </div>
+
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <InfoCard 
                 icon={Fingerprint}
                 label="Identifier / ID"
                 value={userInfo.id}
                 className="font-mono text-[13px]"
-              />
-              <InfoCard 
-                icon={Activity}
-                label="Translation Quota"
-                value={`${userInfo.maxQuota} limits`}
               />
               <InfoCard 
                 icon={Shield}

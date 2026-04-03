@@ -13,6 +13,10 @@ interface AppState {
   // Auth
   jwtToken: string | null;
   userInfo: any | null;
+  quotaInfo: {
+    remainingPercent: number;
+    refreshesAt: string;
+  } | null;
   setAuth: (token: string, user: any) => void;
   logout: () => void;
 
@@ -96,12 +100,13 @@ export const useAppStore = create<AppState>((set, get) => ({
   // Auth
   jwtToken: null,
   userInfo: null,
+  quotaInfo: null,
   setAuth: (token, user) => {
     set({ jwtToken: token, userInfo: user });
     persistSettings({ jwtToken: token, userInfo: user });
   },
   logout: () => {
-    set({ jwtToken: null, userInfo: null });
+    set({ jwtToken: null, userInfo: null, quotaInfo: null });
     persistSettings({ jwtToken: null, userInfo: null });
   },
 
@@ -233,13 +238,13 @@ export const useAppStore = create<AppState>((set, get) => ({
 
           if (res.ok) {
             const data = await res.json();
-            // Refresh userInfo with latest from server
-            set({ userInfo: data.user });
+            // Refresh userInfo and quotaInfo with latest from server
+            set({ userInfo: data.user, quotaInfo: data.quota });
             persistSettings({ userInfo: data.user });
           } else {
             // Token expired or invalid — logout
             console.warn('[Auth] Token expired or invalid, logging out');
-            set({ jwtToken: null, userInfo: null });
+            set({ jwtToken: null, userInfo: null, quotaInfo: null });
             persistSettings({ jwtToken: null, userInfo: null });
           }
         } catch {
