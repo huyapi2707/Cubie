@@ -11,12 +11,6 @@ module.exports = {
       error_file: '~/.pm2/logs/VoiceWorker-err.log',
       out_file: '~/.pm2/logs/VoiceWorker-out.log',
       merge_logs: true,
-      env: {
-        NODE_ENV: 'development',
-      },
-      env_production: {
-        NODE_ENV: 'production',
-      }
     }
   ]
 };

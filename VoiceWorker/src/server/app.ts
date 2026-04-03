@@ -40,6 +40,11 @@ export async function createServer() {
     bodyLimit: config.WS_MAX_PAYLOAD_BYTES,
   });
 
+  // ─── Request Logging ─────────────────────────────────────────────────
+  app.addHook("onRequest", async (request) => {
+    logger.info({ method: request.method, url: request.url, ip: request.ip }, "Incoming request");
+  });
+
   // ─── Plugins ─────────────────────────────────────────────────────────
   await app.register(prismaPlugin);
 
