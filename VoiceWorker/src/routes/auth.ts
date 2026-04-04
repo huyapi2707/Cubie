@@ -47,15 +47,18 @@ export const authRoutes: FastifyPluginAsync<AuthOptions> = async (app, opts) => 
     return { token, user };
   });
 
-  /** Verify token and return the current user profile + quota */
+  /** Verify token and return the current user profile + quota + plan */
   app.get("/auth/me", { preHandler: [authenticate] }, async (req, reply) => {
     const user = await userService.findById(req.user!.userId);
     if (!user) {
       return reply.status(404).send({ error: "User not found" });
     }
 
-    const quota = await quotaService.getClientQuota(req.user!.userId);
+    const [quota, plan] = await Promise.all([
+      quotaService.getClientQuota(req.user!.userId),
+      userService.getActivePlan(req.user!.userId),
+    ]);
 
-    return { user, quota };
+    return { user, quota, plan };
   });
 };

@@ -19,13 +19,34 @@ enum Role {
 }
 
 model User {
-  id         String      @id @default(uuid())
-  email      String      @unique
-  password   String
-  name       String?
-  role       Role        @default(CUSTOMER)
-  maxQuota   Int         @default(0) // Maximum allowed usage per 4 hours
-  createdAt  DateTime    @default(now())
-  updatedAt  DateTime    @updatedAt
+  id        String     @id @default(uuid())
+  email     String     @unique
+  password  String
+  name      String?
+  role      Role       @default(CUSTOMER)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  plans     UserPlan[]
 }
 
+model Plan {
+  id          String     @id @default(uuid())
+  name        String     @unique
+  description String?
+  maxQuota    Int        // Maximum allowed usage per 4-hour window
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  userPlans   UserPlan[]
+}
+
+model UserPlan {
+  id           String   @id @default(uuid())
+  userId       String
+  planId       String
+  registeredAt DateTime @default(now())
+  expiresAt    DateTime
+  user         User     @relation(fields: [userId], references: [id])
+  plan         Plan     @relation(fields: [planId], references: [id])
+
+  @@index([userId, expiresAt])
+}

@@ -78,6 +78,30 @@ export const adminjsPlugin: FastifyPluginAsync = async (app) => {
           properties: {
             password: { isVisible: false },
           },
+          titleProperty: 'name',
+          navigation: { name: 'Users', icon: 'User' },
+        },
+      },
+      {
+        resource: { model: getModelByName('Plan'), client: prisma },
+        options: {
+          titleProperty: 'name',
+          navigation: { name: 'Plans', icon: 'Archive' },
+          properties: {
+            maxQuota: {
+              description: 'Maximum allowed usage per 4-hour window (bytes)',
+            },
+          },
+          listProperties: ['name', 'maxQuota', 'description', 'createdAt'],
+          editProperties: ['name', 'description', 'maxQuota'],
+        },
+      },
+      {
+        resource: { model: getModelByName('UserPlan'), client: prisma },
+        options: {
+          navigation: { name: 'Plans', icon: 'Archive' },
+          listProperties: ['user', 'plan', 'registeredAt', 'expiresAt'],
+          editProperties: ['user', 'plan', 'expiresAt'],
         },
       },
     ],

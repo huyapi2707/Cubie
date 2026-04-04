@@ -6,7 +6,8 @@ import {
   Mail, 
   Activity, 
   Fingerprint,
-  CheckCircle2,
+  Crown,
+  Calendar,
   Timer
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -121,15 +122,20 @@ export function MePage() {
   const userInfo = useAppStore((s) => s.userInfo);
   const jwtToken = useAppStore((s) => s.jwtToken);
   const quotaInfo = useAppStore((s) => s.quotaInfo);
+  const planInfo = useAppStore((s) => s.planInfo);
   const logout = useAppStore((s) => s.logout);
 
   const [localQuota, setLocalQuota] = useState(quotaInfo);
+  const [localPlan, setLocalPlan] = useState(planInfo);
   const [loadingQuota, setLoadingQuota] = useState(!quotaInfo);
 
-  // Keep localQuota in sync with real-time WS updates from the store
+  // Keep local state in sync with store
   useEffect(() => {
     if (quotaInfo) setLocalQuota(quotaInfo);
   }, [quotaInfo]);
+  useEffect(() => {
+    if (planInfo) setLocalPlan(planInfo);
+  }, [planInfo]);
 
   useEffect(() => {
     async function fetchFreshQuota() {
@@ -146,7 +152,8 @@ export function MePage() {
           const data = await res.json();
           if (data.quota) {
             setLocalQuota(data.quota);
-            useAppStore.setState({ userInfo: data.user, quotaInfo: data.quota });
+            setLocalPlan(data.plan ?? null);
+            useAppStore.setState({ userInfo: data.user, quotaInfo: data.quota, planInfo: data.plan ?? null });
           }
         }
       } catch (err) {
@@ -286,19 +293,37 @@ export function MePage() {
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <InfoCard 
-                icon={Fingerprint}
-                label="Identifier / ID"
-                value={userInfo.id}
-                className="font-mono text-[13px]"
-              />
-
-               <InfoCard 
-                icon={CheckCircle2}
-                label="Account Status"
-                value="Active & Secured"
-                valueClass="text-emerald-500"
-              />
+              {localPlan ? (
+                <div className="group flex flex-col p-5 rounded-2xl border border-border/40 bg-card hover:bg-accent/30 transition-all duration-300 shadow-sm hover:shadow-md cursor-default">
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="p-2.5 rounded-xl bg-amber-500/10 text-amber-500 group-hover:scale-110 transition-transform duration-300">
+                      <Crown className="h-4 w-4" />
+                    </div>
+                    <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Current Plan</span>
+                  </div>
+                  <span className="text-[15px] font-semibold text-foreground">{localPlan.name}</span>
+                  {localPlan.description && (
+                    <span className="text-xs text-muted-foreground mt-1">{localPlan.description}</span>
+                  )}
+                  <div className="flex items-center gap-4 mt-3 pt-3 border-t border-border/30">
+                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                      <Calendar className="h-3 w-3" />
+                      <span>{new Date(localPlan.registeredAt).toLocaleDateString()}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                      <Timer className="h-3 w-3" />
+                      <span>Expires {new Date(localPlan.expiresAt).toLocaleDateString()}</span>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <InfoCard
+                  icon={Crown}
+                  label="Current Plan"
+                  value="No active plan"
+                  valueClass="text-muted-foreground"
+                />
+              )}
             </div>
           </div>
 

@@ -8,7 +8,6 @@ const userSelect = {
   email: true,
   name: true,
   role: true,
-  maxQuota: true,
   createdAt: true,
   updatedAt: true,
 };
@@ -16,19 +15,64 @@ const userSelect = {
 // Return type without password for public endpoints
 export type SafeUser = Omit<User, "password">;
 
+// Client-safe plan info
+export interface ActivePlanInfo {
+  name: string;
+  description: string | null;
+  registeredAt: string;
+  expiresAt: string;
+}
+
 export class UserService {
   constructor(private prisma: PrismaClient) {}
 
+  /**
+   * Get max quota from the user's active (non-expired) plan.
+   * Returns 0 if no active plan exists.
+   */
   async getUserMaxQuota(userId: string): Promise<number> {
     try {
-      const userRecord = await this.prisma.user.findUnique({
-        where: { id: userId },
-        select: { maxQuota: true }
+      const activePlan = await this.prisma.userPlan.findFirst({
+        where: {
+          userId,
+          expiresAt: { gt: new Date() },
+        },
+        orderBy: { registeredAt: 'desc' },
+        include: { plan: true },
       });
-      return userRecord?.maxQuota || 0;
+      return activePlan?.plan.maxQuota || 0;
     } catch (err) {
       log.error({ err, userId }, "Database error fetching user quota");
       return 0;
+    }
+  }
+
+  /**
+   * Get the user's active plan info for client display.
+   * Returns null if no active plan.
+   */
+  async getActivePlan(userId: string): Promise<ActivePlanInfo | null> {
+    try {
+      const activePlan = await this.prisma.userPlan.findFirst({
+        where: {
+          userId,
+          expiresAt: { gt: new Date() },
+        },
+        orderBy: { registeredAt: 'desc' },
+        include: { plan: true },
+      });
+
+      if (!activePlan) return null;
+
+      return {
+        name: activePlan.plan.name,
+        description: activePlan.plan.description,
+        registeredAt: activePlan.registeredAt.toISOString(),
+        expiresAt: activePlan.expiresAt.toISOString(),
+      };
+    } catch (err) {
+      log.error({ err, userId }, "Database error fetching active plan");
+      return null;
     }
   }
 

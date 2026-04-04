@@ -17,6 +17,12 @@ interface AppState {
     remainingPercent: number;
     refreshesAt: string;
   } | null;
+  planInfo: {
+    name: string;
+    description: string | null;
+    registeredAt: string;
+    expiresAt: string;
+  } | null;
   setAuth: (token: string, user: any) => void;
   logout: () => void;
 
@@ -101,12 +107,13 @@ export const useAppStore = create<AppState>((set, get) => ({
   jwtToken: null,
   userInfo: null,
   quotaInfo: null,
+  planInfo: null,
   setAuth: (token, user) => {
     set({ jwtToken: token, userInfo: user });
     persistSettings({ jwtToken: token, userInfo: user });
   },
   logout: () => {
-    set({ jwtToken: null, userInfo: null, quotaInfo: null });
+    set({ jwtToken: null, userInfo: null, quotaInfo: null, planInfo: null });
     persistSettings({ jwtToken: null, userInfo: null });
   },
 
@@ -239,12 +246,12 @@ export const useAppStore = create<AppState>((set, get) => ({
           if (res.ok) {
             const data = await res.json();
             // Refresh userInfo and quotaInfo with latest from server
-            set({ userInfo: data.user, quotaInfo: data.quota });
+            set({ userInfo: data.user, quotaInfo: data.quota, planInfo: data.plan ?? null });
             persistSettings({ userInfo: data.user });
           } else {
             // Token expired or invalid — logout
             console.warn('[Auth] Token expired or invalid, logging out');
-            set({ jwtToken: null, userInfo: null, quotaInfo: null });
+            set({ jwtToken: null, userInfo: null, quotaInfo: null, planInfo: null });
             persistSettings({ jwtToken: null, userInfo: null });
           }
         } catch {

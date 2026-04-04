@@ -12,14 +12,12 @@ const userCreateSchema = z.object({
   email: z.string().email(),
   password: z.string().min(1, "Password is required"),
   name: z.string().optional(),
-  maxQuota: z.coerce.number().optional()
 });
 
 const userUpdateSchema = z.object({
   email: z.string().email().optional(),
   password: z.string().min(1).optional(),
   name: z.string().optional(),
-  maxQuota: z.coerce.number().optional()
 });
 
 export const userRoutes: FastifyPluginAsync<UserOptions> = async (app, opts) => {
@@ -82,11 +80,7 @@ export const userRoutes: FastifyPluginAsync<UserOptions> = async (app, opts) => 
       return reply.status(400).send({ error: "Invalid data", details: parsed.error.format() });
     }
     
-    // Additional security layer: Only ADMIN can manually change maxQuota (RBAC specific check)
     const updateData: any = { ...parsed.data };
-    if (updateData.maxQuota !== undefined && authUser.role !== "ADMIN") {
-       return reply.status(403).send({ error: "Forbidden: Only admins can adjust maxQuota limits" });
-    }
 
     if (updateData.password) {
       updateData.password = await bcrypt.hash(updateData.password, 10);

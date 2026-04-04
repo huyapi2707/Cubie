@@ -80,8 +80,6 @@ export class WebSocketGateway {
       timestamp: Date.now(),
     } satisfies SessionCreatedMessage);
 
-    // Start quota tracking for this session
-    this.quotaService.startTracking(userId, sessionId, ws);
 
     // ─── Event Handlers ────────────────────────────────────────────────
 
@@ -103,7 +101,6 @@ export class WebSocketGateway {
         { code, reason: reason.toString() },
         "Client disconnected"
       );
-      this.quotaService.stopTracking(sessionId);
       void this.handleDisconnect(sessionId);
     });
 
@@ -288,6 +285,7 @@ export class WebSocketGateway {
         isFinal: result.stt.isFinal,
         timestamp: Date.now(),
       } satisfies TranscriptMessage);
+      void this.quotaService.incrementUsage(session.userId!, result.stt.text.length);
     }
 
     // Send translation
@@ -299,6 +297,7 @@ export class WebSocketGateway {
         targetLanguage: result.translation.targetLanguage,
         timestamp: Date.now(),
       } satisfies TranslationMessage);
+      void this.quotaService.incrementUsage(session.userId!, result.translation.text.length);
     }
 
     // Send synthesized audio as Opus-encoded binary
@@ -306,8 +305,7 @@ export class WebSocketGateway {
       const opusAudio = encodeOpus(result.tts.audioBuffer, result.tts.sampleRate);
       session.websocket.send(opusAudio, { binary: true });
       metrics.increment("audio.bytes_sent", opusAudio.length);
-      // Increment usage counter
-      this.quotaService.incrementLocalUsage(sessionId, audioBuffer.length);
+      void this.quotaService.incrementUsage(session.userId!, result.tts.audioBuffer.length);
     }
   }
 

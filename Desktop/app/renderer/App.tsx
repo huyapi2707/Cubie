@@ -9,7 +9,7 @@ import {
   LoginPage,
   MePage,
 } from '@/components/pages';
-import { voiceService } from '@/services/voice-service';
+
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const hasToken = useAppStore((s) => !!s.jwtToken);
@@ -31,20 +31,8 @@ export default function App() {
     hydrate();
   }, [hydrate]);
 
-  // Global WebSocket listener to process real-time quota updates during streaming
-  useEffect(() => {
-    const unsubscribe = voiceService.onMessage((message) => {
-      if (message.type === 'quota_update') {
-        useAppStore.setState({
-          quotaInfo: {
-            remainingPercent: Number(message.remainingPercent) || 0,
-            refreshesAt: String(message.refreshesAt),
-          }
-        });
-      }
-    });
-    return unsubscribe;
-  }, []);
+
+
 
   if (!hydrated) {
     return null; 
