@@ -5,6 +5,10 @@ import { createChildLogger } from "../utils/logger.js";
 
 const log = createChildLogger({ module: "quota-service" });
 
+const BUCKET_MS = 4 * 60 * 60 * 1000;   // 4 hours
+const BUCKET_TTL = 14400;                // 4 hours in seconds
+const MAX_QUOTA_TTL = 3600;              // 1 hour cache
+
 export class QuotaService {
   private redis: Redis;
   private intervals = new Map<string, NodeJS.Timeout>();
@@ -18,13 +22,12 @@ export class QuotaService {
   }
 
   /**
-   * Gets the maximum quota for a user, using Redis cache or Prisma fallback.
+   * Gets the maximum quota for a user, using Redis cache or DB fallback.
    */
   async getMaxQuota(userId: string): Promise<number> {
     const cacheKey = `user:${userId}:max_quota`;
     try {
       const cached = await this.redis.get(cacheKey);
-
       if (cached !== null) {
         return parseInt(cached, 10);
       }
@@ -32,43 +35,86 @@ export class QuotaService {
       log.warn({ err, userId }, "Failed to get max quota from Redis cache");
     }
 
-    // Fallback to UserService
     const maxQuota = await this.userService.getUserMaxQuota(userId);
-    await this.redis.set(cacheKey, maxQuota, 'EX', 3600);
+    try {
+      await this.redis.set(cacheKey, maxQuota, 'EX', MAX_QUOTA_TTL);
+    } catch (err) {
+      log.warn({ err, userId }, "Failed to cache max quota in Redis");
+    }
     return maxQuota;
   }
 
+  // ─── Per-User Sliding Bucket ────────────────────────────────────────────────
+
   /**
-   * Returns the bucket identifier for the current 4-hour window.
+   * Get the start timestamp of the user's active quota bucket.
+   * Returns null if no active bucket (user was idle / bucket expired).
    */
-  private getCurrentBucket(): number {
-    return Math.floor(Date.now() / (4 * 60 * 60 * 1000));
+  private async getActiveBucketStart(userId: string): Promise<number | null> {
+    const startKey = `user:${userId}:bucket_start`;
+    try {
+      const cached = await this.redis.get(startKey);
+      return cached !== null ? parseInt(cached, 10) : null;
+    } catch (err) {
+      log.warn({ err, userId }, "Failed to read bucket start from Redis");
+      return null;
+    }
   }
 
   /**
-   * Returns the ISO timestamp when the current 4-hour quota window resets.
+   * Get or create the user's active quota bucket.
+   * If no bucket exists (user was idle), a new 4-hour window starts from now.
    */
-  getNextRefreshTime(): string {
-    const bucketMs = 4 * 60 * 60 * 1000;
-    const nextBucket = (this.getCurrentBucket() + 1) * bucketMs;
-    return new Date(nextBucket).toISOString();
+  private async getOrCreateBucket(userId: string): Promise<{ usageKey: string; bucketStart: number }> {
+    const existing = await this.getActiveBucketStart(userId);
+    if (existing !== null) {
+      return { usageKey: `user:${userId}:usage:${existing}`, bucketStart: existing };
+    }
+
+    const bucketStart = Date.now();
+    await this.redis.set(`user:${userId}:bucket_start`, bucketStart, 'EX', BUCKET_TTL);
+    return { usageKey: `user:${userId}:usage:${bucketStart}`, bucketStart };
+  }
+
+  /**
+   * Returns the ISO timestamp when the user's current quota window resets.
+   * If no active bucket, returns now + 4h (hypothetical next reset).
+   */
+  async getNextRefreshTime(userId: string): Promise<string> {
+    const bucketStart = await this.getActiveBucketStart(userId);
+    const start = bucketStart ?? Date.now();
+    return new Date(start + BUCKET_MS).toISOString();
+  }
+
+  // ─── Quota Helpers ──────────────────────────────────────────────────────────
+
+  /**
+   * Compute remaining percentage from usage/max values.
+   */
+  private computeRemainingPercent(usage: number, maxQuota: number): number {
+    if (maxQuota <= 0) return 100;
+    return Math.max(Math.round(((maxQuota - usage) / maxQuota) * 100), 0);
   }
 
   /**
    * Check if a user currently has quota available.
    */
   async checkQuota(userId: string): Promise<boolean> {
+    const bucketStart = await this.getActiveBucketStart(userId);
+
+    // No active bucket → no usage → quota available
+    if (bucketStart === null) return true;
+
     const maxQuota = await this.getMaxQuota(userId);
-    const bucket = this.getCurrentBucket();
-    const usageKey = `user:${userId}:usage:${bucket}`;
-    
+    const usageKey = `user:${userId}:usage:${bucketStart}`;
+
     try {
       const usageStr = await this.redis.get(usageKey);
       const totalUsage = usageStr ? parseInt(usageStr, 10) : 0;
       return totalUsage < maxQuota;
     } catch (err) {
-       log.warn({ err, userId }, "Failed to read current usage from Redis");
-       return false; // Fail safe
+      log.warn({ err, userId }, "Failed to read current usage from Redis");
+      return false;
     }
   }
 
@@ -83,18 +129,22 @@ export class QuotaService {
   /**
    * Get the current usage and max quota for a user in the active bucket.
    */
-  async getUsage(userId: string): Promise<{ usage: number; maxQuota: number; bucket: number }> {
-    const bucket = this.getCurrentBucket();
-    const usageKey = `user:${userId}:usage:${bucket}`;
+  async getUsage(userId: string): Promise<{ usage: number; maxQuota: number }> {
     const maxQuota = await this.getMaxQuota(userId);
+    const bucketStart = await this.getActiveBucketStart(userId);
 
+    if (bucketStart === null) {
+      return { usage: 0, maxQuota };
+    }
+
+    const usageKey = `user:${userId}:usage:${bucketStart}`;
     try {
       const usageStr = await this.redis.get(usageKey);
       const usage = usageStr ? parseInt(usageStr, 10) : 0;
-      return { usage, maxQuota, bucket };
+      return { usage, maxQuota };
     } catch (err) {
       log.warn({ err, userId }, "Failed to read usage from Redis");
-      return { usage: 0, maxQuota, bucket };
+      return { usage: 0, maxQuota };
     }
   }
 
@@ -104,14 +154,29 @@ export class QuotaService {
    */
   async getClientQuota(userId: string): Promise<{ remainingPercent: number; refreshesAt: string }> {
     const { usage, maxQuota } = await this.getUsage(userId);
-    const remainingPercent = maxQuota > 0
-      ? Math.max(Math.round(((maxQuota - usage) / maxQuota) * 100), 0)
-      : 100;
-    return { remainingPercent, refreshesAt: this.getNextRefreshTime() };
+    return {
+      remainingPercent: this.computeRemainingPercent(usage, maxQuota),
+      refreshesAt: await this.getNextRefreshTime(userId),
+    };
   }
 
   /**
-   * Start tracking quota during an active sliding window stream.
+   * Atomically flush local usage to Redis and return the new total.
+   * Uses INCRBY which auto-creates the key if missing, then sets TTL on first creation.
+   */
+  private async flushUsageToRedis(usageKey: string, localBytes: number): Promise<number> {
+    const totalUsage = await this.redis.incrby(usageKey, localBytes);
+
+    // Set TTL only when the key was just created (total equals what we just added)
+    if (totalUsage === localBytes) {
+      await this.redis.expire(usageKey, BUCKET_TTL);
+    }
+
+    return totalUsage;
+  }
+
+  /**
+   * Start tracking quota during an active streaming session.
    */
   startTracking(userId: string, sessionId: string, socket: WebSocket): void {
     if (this.intervals.has(sessionId)) return;
@@ -120,30 +185,14 @@ export class QuotaService {
 
     const interval = setInterval(async () => {
       try {
-        const usage = this.localUsage.get(sessionId) || 0;
+        const localBytes = this.localUsage.get(sessionId) || 0;
         this.localUsage.set(sessionId, 0);
 
-        const bucket = this.getCurrentBucket();
-        const usageKey = `user:${userId}:usage:${bucket}`;
-        const maxQuotaKey = `user:${userId}:max_quota`;
+        // Only flush to Redis if there's new usage; otherwise skip the round-trip
+        if (localBytes <= 0) return;
 
-        let totalUsage = 0;
-
-        if (usage > 0) {
-          const exists = await this.redis.exists(usageKey);
-          totalUsage = await this.redis.incrby(usageKey, usage);
-          if (!exists) {
-             // If newly created, set expiration to 4 hours automatically
-             await this.redis.expire(usageKey, 14400); 
-          }
-        } else {
-          const current = await this.redis.get(usageKey);
-          totalUsage = current ? parseInt(current, 10) : 0;
-        }
-
-        // Refresh max limit TTL so cache stays active during stream
-        await this.redis.expire(maxQuotaKey, 3600);
-
+        const { usageKey } = await this.getOrCreateBucket(userId);
+        const totalUsage = await this.flushUsageToRedis(usageKey, localBytes);
         const maxQuota = await this.getMaxQuota(userId);
 
         if (totalUsage >= maxQuota) {
@@ -153,18 +202,13 @@ export class QuotaService {
           }
           this.stopTracking(sessionId);
         } else if (socket.readyState === socket.OPEN) {
-          // Send real-time quota updates — percentage only, no raw bytes
-          const remainingPercent = maxQuota > 0
-            ? Math.max(Math.round(((maxQuota - totalUsage) / maxQuota) * 100), 0)
-            : 100;
           socket.send(JSON.stringify({
             type: "quota_update",
-            remainingPercent,
-            refreshesAt: this.getNextRefreshTime(),
-            timestamp: Date.now()
+            remainingPercent: this.computeRemainingPercent(totalUsage, maxQuota),
+            refreshesAt: await this.getNextRefreshTime(userId),
+            timestamp: Date.now(),
           }));
         }
-
       } catch (err) {
         log.error({ err, userId }, "Error during quota interval sync");
       }
@@ -174,7 +218,7 @@ export class QuotaService {
   }
 
   /**
-   * Clear all interval timers for a session on disconnect.
+   * Clear interval timer and local usage for a session on disconnect.
    */
   stopTracking(sessionId: string): void {
     const interval = this.intervals.get(sessionId);
@@ -185,3 +229,4 @@ export class QuotaService {
     this.localUsage.delete(sessionId);
   }
 }
+
