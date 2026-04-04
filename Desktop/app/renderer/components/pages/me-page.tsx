@@ -4,7 +4,6 @@ import { Button } from '@/components/ui/button';
 import { 
   LogOut, 
   Mail, 
-  Shield, 
   Activity, 
   Fingerprint,
   CheckCircle2,
@@ -194,12 +193,7 @@ export function MePage() {
                 </div>
               </div>
               
-              <div className="hidden sm:block pb-2">
-                <div className="px-3 py-1.5 rounded-full bg-primary/10 border border-primary/20 flex items-center gap-2 shadow-sm">
-                  <div className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)] animate-pulse" />
-                  <span className="text-xs font-semibold text-primary uppercase tracking-widest">{userInfo.role || 'Member'}</span>
-                </div>
-              </div>
+
             </div>
           </div>
         </div>
@@ -209,7 +203,7 @@ export function MePage() {
           {/* Quick Stats / Identifiers */}
           <div className="lg:col-span-2 space-y-6">
             <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider ml-1 flex items-center gap-2">
-              <Shield className="h-4 w-4" />
+              <Fingerprint className="h-4 w-4" />
               Account Details
             </h3>
             
@@ -298,12 +292,7 @@ export function MePage() {
                 value={userInfo.id}
                 className="font-mono text-[13px]"
               />
-              <InfoCard 
-                icon={Shield}
-                label="Permission Level"
-                value={userInfo.role}
-                className="capitalize"
-              />
+
                <InfoCard 
                 icon={CheckCircle2}
                 label="Account Status"
