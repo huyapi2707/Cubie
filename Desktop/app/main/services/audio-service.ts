@@ -492,12 +492,8 @@ export function writeToForwardDevice(pcm: Float32Array): void {
         frame = chunk;
       }
 
-      // Write mono Int16 LE directly to the forward device
-      const buf = Buffer.alloc(FRAME_SIZE * 2);
-      for (let i = 0; i < FRAME_SIZE; i++) {
-        buf.writeInt16LE(Math.max(-32768, Math.min(32767, frame[i] | 0)), i * 2);
-      }
-      forwardDeviceOutput.write(buf);
+      // Use writeMonoToSpeaker to handle mono → multi-channel duplication
+      writeMonoToSpeaker(forwardDeviceOutput, frame, forwardDeviceOutChannels);
     }
   } catch (err) {
     console.error('[AudioService] Error writing to forward device:', err);

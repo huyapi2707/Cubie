@@ -4,8 +4,11 @@ import { RtAudioFormat } from 'audify';
 // Single source of truth for sample rate, frame size, and audio format
 // shared across audio-pipeline, audio-service, and voice-service.
 
-/** Capture & playback sample rate (Hz). */
+/** Capture sample rate (Hz). */
 export const SAMPLE_RATE = 48000;
+
+/** TTS playback sample rate (Hz) — must match the server's TTS output rate. */
+export const OUTPUT_SAMPLE_RATE = 24000;
 
 /** Frame size in samples — 10ms @ 48kHz (RNNoise native frame size). */
 export const FRAME_SIZE = 480;

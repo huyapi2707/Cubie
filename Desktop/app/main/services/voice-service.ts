@@ -14,6 +14,7 @@ import { BrowserWindow } from 'electron';
 import { encodeOpus, decodeOpus, isOpusEncoded } from './opus-codec';
 import { AudioPipeline } from './audio-pipeline';
 import { startForwardDeviceOutput, writeToForwardDevice, stopForwardDeviceOutput } from './audio-service';
+import { OUTPUT_SAMPLE_RATE } from './constants';
 import { getSettings } from './settings-store';
 import type { VoiceConfig } from '../../shared/ipc';
 import { IPC_CHANNELS } from '../../shared/ipc';
@@ -234,7 +235,7 @@ export class MainVoiceService {
       // Open persistent output stream to forward device
       const forwardDeviceId = settings.forwardDeviceId;
       if (forwardDeviceId) {
-        startForwardDeviceOutput(forwardDeviceId);
+        startForwardDeviceOutput(forwardDeviceId, OUTPUT_SAMPLE_RATE);
       }
     } catch (err) {
       console.error('[VoiceService] Failed to start audio pipeline:', err);
