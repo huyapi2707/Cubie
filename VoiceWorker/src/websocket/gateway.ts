@@ -285,7 +285,7 @@ export class WebSocketGateway {
         isFinal: result.stt.isFinal,
         timestamp: Date.now(),
       } satisfies TranscriptMessage);
-      void this.quotaService.incrementUsage(session.userId!, result.stt.text.length);
+      void this.quotaService.incrementSttUsage(session.userId!, result.stt.text);
     }
 
     // Send translation
@@ -297,7 +297,7 @@ export class WebSocketGateway {
         targetLanguage: result.translation.targetLanguage,
         timestamp: Date.now(),
       } satisfies TranslationMessage);
-      void this.quotaService.incrementUsage(session.userId!, result.translation.text.length);
+      void this.quotaService.incrementTranslationUsage(session.userId!, result.translation.text);
     }
 
     // Send synthesized audio as Opus-encoded binary
@@ -305,7 +305,7 @@ export class WebSocketGateway {
       const opusAudio = encodeOpus(result.tts.audioBuffer, result.tts.sampleRate);
       session.websocket.send(opusAudio, { binary: true });
       metrics.increment("audio.bytes_sent", opusAudio.length);
-      void this.quotaService.incrementUsage(session.userId!, result.tts.audioBuffer.length);
+      void this.quotaService.incrementTtsUsage(session.userId!, result.tts.audioBuffer);
     }
   }
 

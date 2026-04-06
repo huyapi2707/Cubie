@@ -119,6 +119,67 @@ export class QuotaService {
     }
   }
 
+  // ─── Per-Step Cost Calculation ──────────────────────────────────────────────
+
+  /**
+   * Calculate the quota cost for an STT result.
+   * Charged per character of transcribed text.
+   */
+  private calculateSttCost(textLength: number): number {
+    return textLength;
+  }
+
+  /**
+   * Calculate the quota cost for a translation result.
+   * Charged per character of translated text.
+   */
+  private calculateTranslationCost(textLength: number): number {
+    return textLength;
+  }
+
+  /**
+   * Calculate the quota cost for a TTS result.
+   * Charged per byte of synthesized audio buffer (PCM Int16 = 2 bytes/sample @ 24kHz).
+   * Divided by 2 to normalize to a comparable unit with text-based steps.
+   */
+  private calculateTtsCost(audioBufferLength: number): number {
+    log.debug({ cost: Math.ceil(audioBufferLength / 2) }, "TTS cost");
+    return Math.ceil(audioBufferLength / 2);
+  }
+
+  /**
+   * Increment usage for an STT step.
+   * @param userId - The user ID
+   * @param text - The transcribed text returned by the STT service
+   */
+  async incrementSttUsage(userId: string, text: string): Promise<void> {
+    const cost = this.calculateSttCost(text.length);
+    log.debug({ userId, textLength: text.length, cost }, "STT usage");
+    await this.incrementUsage(userId, cost);
+  }
+
+  /**
+   * Increment usage for a translation step.
+   * @param userId - The user ID
+   * @param text - The translated text returned by the translation service
+   */
+  async incrementTranslationUsage(userId: string, text: string): Promise<void> {
+    const cost = this.calculateTranslationCost(text.length);
+    log.debug({ userId, textLength: text.length, cost }, "Translation usage");
+    await this.incrementUsage(userId, cost);
+  }
+
+  /**
+   * Increment usage for a TTS step.
+   * @param userId - The user ID
+   * @param audioBuffer - The raw PCM audio buffer from the TTS service
+   */
+  async incrementTtsUsage(userId: string, audioBuffer: Buffer | Float32Array): Promise<void> {
+    const cost = this.calculateTtsCost(audioBuffer.length);
+    log.debug({ userId, bufferLength: audioBuffer.length, cost }, "TTS usage");
+    await this.incrementUsage(userId, cost);
+  }
+
   /**
    * Get the current usage and max quota for a user in the active bucket.
    */

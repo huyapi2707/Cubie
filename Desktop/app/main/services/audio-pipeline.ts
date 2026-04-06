@@ -82,11 +82,11 @@ export class AudioPipeline {
     this.vad = await RealTimeVAD.new({
       model: 'v5',
       sampleRate: SAMPLE_RATE,
-      positiveSpeechThreshold: 0.5,
-      negativeSpeechThreshold: 0.35,
-      redemptionFrames: 8,
-      preSpeechPadFrames: 1,
-      minSpeechFrames: 3,
+      positiveSpeechThreshold: 0.4,   // more sensitive speech detection
+      negativeSpeechThreshold: 0.25,  // hold speech longer before ending
+      redemptionFrames: 10,           // ~960ms hangover — avoids mid-utterance cuts
+      preSpeechPadFrames: 3,          // ~288ms lead-in — captures plosive word starters
+      minSpeechFrames: 2,             // accept shorter utterances
       onSpeechStart: () => {
         console.log('[AudioPipeline] Silero VAD — Speech started');
         this.callbacks.onSpeechStart?.();
@@ -193,34 +193,32 @@ export class AudioPipeline {
    */
   private processFrame(frame: Float32Array): void {
 
-    const rawRms = calculateRms(frame);
-    const rawDb = rmsToDb(rawRms);
+    // 1. Boost raw mic signal first
+    let processedFrame = this.boostUp(frame);
+
+    // 2. Denoise the boosted signal
+    processedFrame = this.rnnoise?.process(processedFrame) || processedFrame;
+
+    // 3. Gate on the cleaned, amplified signal — not the raw mic
+    const processedRms = calculateRms(processedFrame);
+    const processedDb = rmsToDb(processedRms);
     const gateDb = getSetting('noiseGateDb');
 
-    // Hard noise gate — skip extremely quiet frames
-    if (rawDb < gateDb) {
+    if (processedDb < gateDb) {
       this.callbacks.onFrame?.(0);
       return;
     }
 
-    let processedFrame = this.boostUp(frame);
-
-    processedFrame = this.rnnoise?.process(processedFrame) || processedFrame;
-
-    const processedRms = calculateRms(processedFrame);
-
     this.callbacks.onDenoisedFrame?.(processedFrame);
     this.callbacks.onFrame?.(processedRms);
 
-    if ((this.callbacks.onSpeechStart || this.callbacks.onSpeechEnd) || true) {
-      // Normalize Int16-range → [-1.0, 1.0] for Silero VAD
-      const normalized = normalizeInt16(processedFrame);
-      // Feed to Silero VAD (async but we fire-and-forget from the audio callback)
-      this.vad?.processAudio(normalized).catch((err) => {
-        console.error('[AudioPipeline] VAD processAudio error:', err);
-        reportError('Voice activity detection error. Audio processing may be degraded.', 'Audio Pipeline');
-      });
-    }
+    // 4. Normalize Int16-range → [-1.0, 1.0] for Silero VAD
+    const normalized = normalizeInt16(processedFrame);
+    // Feed to Silero VAD (async but we fire-and-forget from the audio callback)
+    this.vad?.processAudio(normalized).catch((err) => {
+      console.error('[AudioPipeline] VAD processAudio error:', err);
+      reportError('Voice activity detection error. Audio processing may be degraded.', 'Audio Pipeline');
+    });
 
   }
 
@@ -230,7 +228,8 @@ export class AudioPipeline {
 
     const boostedFrame = new Float32Array(frame.length);
     for (let i = 0; i < frame.length; i++) {
-      boostedFrame[i] = frame[i] * rate;
+      // Clamp to Int16 range to prevent distortion going into RNNoise
+      boostedFrame[i] = Math.max(-32768, Math.min(32767, frame[i] * rate));
     }
     return boostedFrame;
   }

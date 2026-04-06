@@ -2,6 +2,7 @@ import { RtAudio, RtAudioApi } from 'audify';
 import { AudioPipeline } from './audio-pipeline';
 import { SAMPLE_RATE, FRAME_SIZE, AUDIO_FORMAT, MIC_CHANNELS } from './constants';
 import { calculateRms, rmsToDb } from './utils';
+import { getSetting } from './settings-store';
 import { reportError } from './error-reporter';
 
 
@@ -560,8 +561,6 @@ export function playSpeakerTest(outputDeviceId: number): void {
 
 // ─── Raw Level Meter (no denoise, no speaker) ───────────────────────────────
 
-const RAW_INPUT_GAIN = 1;       // Unity gain — show true mic level (AGC handles amplification)
-
 let rawLevelAudio: RtAudio | null = null;
 
 /**
@@ -581,7 +580,10 @@ export function startRawLevel(micId: number, onLevel: (db: number) => void): voi
       FRAME_SIZE,
       'RawLevelMeter',
       (pcmBuffer: Buffer) => {
-        const mono = extractMonoWithGain(pcmBuffer, 1, RAW_INPUT_GAIN);
+        // Apply the same boostUpRate as the pipeline so meter readings
+        // match what the noise gate sees (gate now evaluates boosted+denoised signal)
+        const boostRate = getSetting('boostUpRate');
+        const mono = extractMonoWithGain(pcmBuffer, 1, boostRate);
         const rms = calculateRms(mono);
         const db = rmsToDb(rms);
         onLevel(db);

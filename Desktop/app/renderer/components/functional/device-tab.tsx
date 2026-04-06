@@ -208,7 +208,7 @@ export function DeviceTab() {
                   </span>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Audio below this level is silenced before noise reduction. Lower values let more sound through.
+                  Audio below this level is silenced after boost and noise reduction. Lower values let more sound through.
                 </p>
                 <Slider
                   id="noise-gate-slider"
