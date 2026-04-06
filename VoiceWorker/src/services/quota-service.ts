@@ -139,12 +139,17 @@ export class QuotaService {
 
   /**
    * Calculate the quota cost for a TTS result.
-   * Charged per byte of synthesized audio buffer (PCM Int16 = 2 bytes/sample @ 24kHz).
-   * Divided by 2 to normalize to a comparable unit with text-based steps.
+   * Charged per millisecond of synthesized audio duration.
+   *
+   * Formula: ceil(samples / sampleRate * 1000)
+   * e.g. 24000 samples @ 24kHz = 1000ms = 1000 units
+   *
+   * @param audioLength - Number of samples in the Float32Array buffer
+   * @param sampleRate - Sample rate of the TTS output (Hz)
    */
-  private calculateTtsCost(audioBufferLength: number): number {
-    log.debug({ cost: Math.ceil(audioBufferLength / 2) }, "TTS cost");
-    return Math.ceil(audioBufferLength / 2);
+  private calculateTtsCost(audioLength: number, sampleRate: number): number {
+    const durationMs = (audioLength / sampleRate) * 1000;
+    return Math.ceil(durationMs);
   }
 
   /**
@@ -172,11 +177,13 @@ export class QuotaService {
   /**
    * Increment usage for a TTS step.
    * @param userId - The user ID
-   * @param audioBuffer - The raw PCM audio buffer from the TTS service
+   * @param audioBuffer - The raw PCM Float32Array from the TTS service
+   * @param sampleRate - The sample rate of the audio (Hz) — used to compute duration
    */
-  async incrementTtsUsage(userId: string, audioBuffer: Buffer | Float32Array): Promise<void> {
-    const cost = this.calculateTtsCost(audioBuffer.length);
-    log.debug({ userId, bufferLength: audioBuffer.length, cost }, "TTS usage");
+  async incrementTtsUsage(userId: string, audioBuffer: Buffer | Float32Array, sampleRate: number): Promise<void> {
+    const cost = this.calculateTtsCost(audioBuffer.length, sampleRate);
+    const durationMs = Math.ceil((audioBuffer.length / sampleRate) * 1000);
+    log.debug({ userId, samples: audioBuffer.length, sampleRate, durationMs, cost }, "TTS usage");
     await this.incrementUsage(userId, cost);
   }
 

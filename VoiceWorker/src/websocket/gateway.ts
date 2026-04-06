@@ -305,7 +305,7 @@ export class WebSocketGateway {
       const opusAudio = encodeOpus(result.tts.audioBuffer, result.tts.sampleRate);
       session.websocket.send(opusAudio, { binary: true });
       metrics.increment("audio.bytes_sent", opusAudio.length);
-      void this.quotaService.incrementTtsUsage(session.userId!, result.tts.audioBuffer);
+      void this.quotaService.incrementTtsUsage(session.userId!, result.tts.audioBuffer, result.tts.sampleRate);
     }
   }
 
