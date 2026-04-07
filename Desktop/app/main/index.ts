@@ -11,8 +11,8 @@ const RENDERER_DEV_URL = 'http://localhost:5173';
 
 // Voice server — single source of truth for all connection config.
 // In production, change the host and switch to wss:// / https://.
-// const VOICE_SERVER_HOST = '34.177.84.211'; 
-const VOICE_SERVER_HOST = 'localhost:3001';
+const VOICE_SERVER_HOST = '34.177.84.211'; 
+// const VOICE_SERVER_HOST = 'localhost:3001';
 const VOICE_SERVER_WS = `ws://${VOICE_SERVER_HOST}`;
 const VOICE_SERVER_HTTP = `http://${VOICE_SERVER_HOST}`;
 

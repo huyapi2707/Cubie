@@ -8,6 +8,7 @@ import {
   SettingsPage,
   LoginPage,
   MePage,
+  LoadingScreen,
 } from '@/components/pages';
 
 
@@ -35,7 +36,7 @@ export default function App() {
 
 
   if (!hydrated) {
-    return null; 
+    return <LoadingScreen />;
   }
 
   return (

@@ -212,9 +212,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         window.electronAPI?.voice?.getConfig(),
       ]);
 
-      const patch: Record<string, unknown> = {
-        _hydrated: true,
-      };
+      const patch: Record<string, unknown> = {};
 
       if (settings) {
         patch.theme = settings.theme || 'dark';
@@ -255,10 +253,15 @@ export const useAppStore = create<AppState>((set, get) => ({
             persistSettings({ jwtToken: null, userInfo: null });
           }
         } catch {
-          // Server unreachable — keep token, let user retry later
-          console.warn('[Auth] Could not reach server to verify token');
+          // Server unreachable or request failed — clear credentials
+          console.warn('[Auth] Could not reach server to verify token, logging out');
+          set({ jwtToken: null, userInfo: null, quotaInfo: null, planInfo: null });
+          persistSettings({ jwtToken: null, userInfo: null });
         }
       }
+
+      // Auth fully resolved — dismiss loading screen
+      set({ _hydrated: true });
     } catch {
       // Settings not available (e.g. running outside Electron)
       set({ _hydrated: true });
